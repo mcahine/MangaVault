@@ -1,0 +1,57 @@
+# ============================================================
+#  漫库 MangaVault · git 忽略规则
+#
+#  原则：代码进仓库，运行时数据 / 构建产物 / 本机环境全部不进。
+#  克隆后直接 `node src/server.mjs` 即可运行，不需要任何依赖安装。
+# ============================================================
+
+# ---------- 运行时数据：绝不进仓库 ----------
+# 真实数据目录默认在 %LOCALAPPDATA%\MangaVault（见 src/core/config.mjs）
+# 只有 .gitkeep 需要保留，用来占住这个目录的存在
+data/*
+!data/.gitkeep
+config.json
+*.log
+
+# ---------- 构建产物 ----------
+dist/
+build/
+*.exe
+*.pdb
+*.dll.tmp
+
+# ---------- Python 字节码缓存 ----------
+# src/modules/dedupe/engine/python/ 下的脚本由 Node 调起，会生成 __pycache__
+__pycache__/
+*.pyc
+*.pyo
+
+# ---------- 依赖与缓存（本项目本应没有，兜底）----------
+node_modules/
+.cache/
+
+# ---------- 开发期临时脚本 ----------
+# 项目约定：临时探针写到 scripts/dev/tmp-*，跑完即删，绝不提交
+scripts/dev/tmp-*
+*.tmp
+*.bak
+*.orig
+
+# ---------- 编辑器 / 系统 ----------
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
+*.swp
+*~
+
+# ---------- 本机环境 / 密钥 ----------
+.env
+.env.*
+*.pem
+*.key
+
+# ---------- 路径解析失败时的兜底 ----------
+# process.env.TEMP 为空时 path.join 会拼出 undefined/ 目录
+undefined/

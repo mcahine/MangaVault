@@ -1,0 +1,43 @@
+{
+  "//": "漫库配置模板。首次启动会拷贝到数据目录的 config.json，之后改那份，不要改这个。",
+  "//dataDir": "留空使用默认：%LOCALAPPDATA%\\MangaVault。可用环境变量 MV_DATA_DIR 或 --data-dir=<path> 覆盖。",
+  "dataDir": "",
+  "port": 8775,
+  "host": "127.0.0.1",
+  "logLevel": "info",
+
+  "//libraryRoots": "库根列表。每个库根是一个目录，其一级子目录被视为漫画。格式约定见 docs/LIBRARY_FORMAT.md。",
+  "libraryRoots": [],
+
+  "//libraryRoot": "兼容字段：默认库根（会被自动补进 libraryRoots）。",
+  "libraryRoot": "",
+  "downloadRoot": "",
+
+  "picacomic": {
+    "apiBase": "https://picaapi.picacomic.com",
+    "apiKey": "C69BAF41DA5ABD1FFEDC6D2F1E65565756B405E69A5D1D3D1F4B2C3A4D5E6F70",
+    "appVersion": "2.2.1.2.3.3",
+    "appPlatform": "android",
+    "appBuildVersion": "44",
+    "//token": "登录后由系统写入，不要手填。",
+    "token": "",
+    "proxy": null,
+    "downloadFormat": "Jpeg",
+    "dirFmt": "{comic_title}/{order} {chapter_title}",
+    "chapterConcurrency": 2,
+    "chapterIntervalMs": 8000,
+    "imgConcurrency": 12,
+    "imgIntervalMs": 2500,
+    "shouldDownloadCover": true,
+    "retryTimes": 3,
+    "timeoutMs": 30000
+  },
+
+  "dedupe": {
+    "scanRoot": "",
+    "libRoot": "",
+    "pixelThreshold": 8,
+    "thumbCount": 6,
+    "pixelReview": true
+  }
+}

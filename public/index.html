@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN" data-platform="desktop">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- 双保险：即便入口 HTML 被中间层（代理 / 桌面宿主）缓存，也不让它被长期复用。
+     真正的断缓存靠服务端发的 Cache-Control: no-store；这里只是兜底。 -->
+<meta http-equiv="Cache-Control" content="no-store" />
+<meta http-equiv="Pragma" content="no-cache" />
+<title>漫库 MangaVault</title>
+<link rel="icon" href="/favicon.svg" />
+<link rel="stylesheet" href="/theme.css" />
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="side-brand">
+      <div class="side-logo">漫</div>
+      <div class="side-brand-txt">
+        <span class="side-brand-name">漫库</span>
+        <span class="side-brand-sub">MangaVault</span>
+      </div>
+    </div>
+    <nav class="side-nav" id="nav"></nav>
+    <div class="side-foot" id="sideFoot">
+      <div class="row gap-6"><span class="dot dot-err" id="footDot"></span><span id="footStatus">连接中…</span></div>
+      <div id="footStats" class="muted"></div>
+      <div id="footBuild" class="label-mono" style="margin-top:2px;opacity:.72;line-height:1.35;word-break:break-all">版本自检中…</div>
+      <div class="row between" style="margin-top:4px">
+        <span class="stamp">RISOPRINT</span>
+        <span class="label-mono">v1.0</span>
+      </div>
+    </div>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <div class="col grow" style="min-width:0">
+        <span class="topbar-title" id="topTitle">漫库</span>
+        <span class="topbar-sub" id="topSub">本地漫画中枢</span>
+      </div>
+      <div class="searchbox" style="max-width:320px" id="globalSearchBox">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input class="input" id="globalSearch" placeholder="搜索标题 / 作者 / 标签…（Enter）  Ctrl+K 命令面板" autocomplete="off" />
+      </div>
+      <button class="btn btn-sm btn-ghost" id="btnCmd" title="命令面板（Ctrl+K）">Ctrl+K</button>
+      <button class="btn btn-icon btn-ghost" id="btnReload" title="重新加载当前页（Ctrl+R）"></button>
+    </header>
+    <main class="content" id="content"></main>
+  </div>
+</div>
+<div class="toast-wrap" id="toasts"></div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

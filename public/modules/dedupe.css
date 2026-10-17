@@ -1,0 +1,46 @@
+/* 查重模块前端样式（只补充 theme.css 没有的布局，类名统一 mv- 前缀） */
+
+.mv-dedupe-toolbar-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.mv-dedupe-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+
+/* 单元卡片：本单元 vs 库内章节 并排对比 */
+.mv-card { display: flex; flex-direction: column; gap: 0; overflow: hidden; cursor: pointer; }
+.mv-card:hover { border-color: rgba(124,92,255,.5); }
+.mv-card-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); }
+.mv-side { position: relative; background: rgba(0,0,0,.25); display: flex; flex-direction: column; }
+.mv-side img { width: 100%; height: 168px; object-fit: cover; display: block; background: rgba(255,255,255,.03); }
+.mv-side-tag { position: absolute; top: 6px; left: 6px; font-size: 10.5px; padding: 1px 6px; border-radius: 20px; background: rgba(7,9,13,.72); border: 1px solid var(--line); color: var(--txt-2); }
+.mv-side-empty { height: 168px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--txt-3); font-size: 11.5px; }
+.mv-side-empty svg { width: 24px; height: 24px; opacity: .4; }
+.mv-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; }
+.mv-card-title { font-size: 12.5px; font-weight: 650; line-height: 1.35; word-break: break-word; }
+.mv-card-meta { font-size: 11px; color: var(--txt-3); display: flex; gap: 10px; flex-wrap: wrap; }
+.mv-card-actions { display: flex; gap: 6px; padding: 0 12px 12px; }
+.mv-card-actions .btn { flex: 1; justify-content: center; }
+.mv-decided { outline: 1px solid rgba(124,92,255,.45); }
+.mv-decided-keep { outline-color: rgba(53,211,154,.5); }
+.mv-decided-delete { outline-color: rgba(255,95,109,.5); }
+
+/* 顶部统计卡里的附加说明行 */
+.mv-stat-sub { font-size: 10.5px; color: var(--txt-3); }
+
+/* 扫描进度 */
+.mv-progress-wrap { display: flex; flex-direction: column; gap: 7px; padding: 12px 14px; margin-bottom: 14px; }
+.mv-progress-head { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
+.mv-progress-msg { color: var(--txt-3); font-size: 11.5px; word-break: break-all; }
+
+/* 详情弹窗：逐张对照 */
+.mv-cmp { display: flex; flex-direction: column; gap: 12px; }
+.mv-cmp-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.mv-cmp-box { display: flex; flex-direction: column; gap: 6px; }
+.mv-cmp-img { width: 100%; max-height: 58vh; object-fit: contain; background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: var(--r); }
+.mv-cmp-cap { font-size: 11.5px; color: var(--txt-3); word-break: break-all; text-align: center; }
+.mv-cmp-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mv-cmp-list { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0; }
+.mv-cmp-thumb { width: 46px; height: 62px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; flex: none; opacity: .65; }
+.mv-cmp-thumb.active { opacity: 1; border-color: rgba(124,92,255,.8); }
+
+/* 删除确认弹窗 */
+.mv-del-list { max-height: 34vh; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.mv-del-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 5px 8px; border-radius: 8px; background: rgba(255,255,255,.03); }
+.mv-del-row .grow { word-break: break-all; }

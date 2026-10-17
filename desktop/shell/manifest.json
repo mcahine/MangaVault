@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "MangaVault 桌面外壳桥",
+  "version": "1.0.0",
+  "description": "漫库桌面端外壳：上报窗口几何、标记 desktop 形态、在服务端桌面模块缺失时兜底 /api/desktop/* 只读接口。",
+  "content_scripts": [
+    {
+      "matches": [
+        "http://127.0.0.1/*",
+        "http://localhost/*"
+      ],
+      "js": [
+        "shim.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "http://127.0.0.1/*",
+        "http://localhost/*"
+      ],
+      "js": [
+        "bridge.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "background": {
+    "service_worker": "bg.js"
+  },
+  "permissions": []
+}

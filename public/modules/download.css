@@ -1,0 +1,36 @@
+/* 下载模块前端自定义样式（mv- 前缀，禁止改 theme.css） */
+
+.mv-dl-root { margin-bottom: 2px; }
+
+.mv-dl-chapters {
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 10px);
+  padding: 6px 8px;
+}
+
+.mv-dl-chapter {
+  padding: 5px 8px;
+  border-radius: 8px;
+  transition: background .15s var(--ease, ease);
+}
+.mv-dl-chapter:hover { background: rgba(255, 255, 255, .04); }
+
+.mv-dl-cb {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  accent-color: var(--accent, #7c5cff);
+  cursor: pointer;
+}
+
+.mv-dl-task .progress { margin-top: 2px; }
+
+.mv-dl-taskline { min-width: 0; }
+
+.mv-dl-logs { margin-top: 8px; }
+.mv-dl-logs > summary { cursor: pointer; user-select: none; }
+
+.mv-dl-task { transition: border-color .18s var(--ease, ease); }
+.mv-dl-task:hover { border-color: var(--line-strong, rgba(255, 255, 255, .18)); }

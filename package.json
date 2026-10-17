@@ -1,0 +1,13 @@
+{
+  "name": "manga-vault",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "漫库 MangaVault —— 本地漫画管理 / 阅读 / 下载 / 查重一体化系统（零第三方依赖）",
+  "engines": { "node": ">=20.11" },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "scan": "node src/cli.mjs scan",
+    "test": "node tests/run-tests.mjs"
+  }
+}
