@@ -549,6 +549,32 @@ operable program or batch file.
 ### 回归防线（两层，都做过敏感度验证）
 
 1. `tests/reader.test.mjs` 新增 5 条静态契约（64 通过 / 0 失败）：**不得再出现 `new IntersectionObserver` / `function observeWebtoon`**；必须有 `currentPageByScroll` / `onStageScroll` / `trackWebtoon`；`ctx.on(stage, 'scroll', onStageScroll)` 必须存在；`queueAround(n);` 必须存在；`if (scrollBound) return;` 必须存在。
+## 十三、截图重拍：去掉个人路径，换成有内容的界面
+
+上一版 6 张截图有两个不足：①`download.jpg` 顶部印着 `C:\Users\<用户名>\Desktop\黄漫`，公开仓库不该暴露个人目录；②下载页停在空的「搜索入库」，没有内容。
+
+### 做法
+
+| 项 | 改动 |
+| --- | --- |
+| 演示库位置 | `%TEMP%\mv-repo-shots\iso-*` → **`C:/Users/Public/MangaVaultDemo`**（Windows 公共目录） |
+| 配置 | demo `config.json` 补 `downloadRoot`，三个路径全部指向新位置 |
+| 下载任务 | 手写两条 `download-tasks.json` 记录：一条 `paused`（52%、图片 32/62、含「服务重启导致中断」告警与 3 条日志）、一条 `done`（36/36） |
+| 截图页签 | 下载页先点 `.chip` 里的「下载任务」再截（第一次用 `button` 选择器选不到，页签是 `div.chip`） |
+
+### 两个必须重跑的步骤（否则截图会退化）
+
+1. **`library-index.json` 里存的是绝对路径**：把演示库从 `%TEMP%` 复制到 `Public` 之后，索引仍指向旧路径 → 查重台「库侧」6 张抽样图全部显示**图片读取失败**（第一版重拍就踩到了，`dedupe.jpg` 上 6 个灰框）。必须先 `POST /api/library/scan` 重新索引。
+2. **快速查重只有预筛、没有像素证据**：`stage=fast` 时判定是「未判定/拿不准」、`像素一致 0/6`；跑 `POST /api/dedupe/scan {stage:'full'}` 后变成**「完全重复」+ `像素一致 6/6`**，统计卡也从全 0 变成 12 单元 / 11 完全重复 / 1 部分重复 / 26.6 MB。演示截图取后者。
+
+最终 6 张（`docs/screenshots/`）：library 643KB、reader 185KB（内容未变，重新生成后字节一致）、dedupe 538KB、vault 638KB、download 533KB、settings 497KB。逐张目视复核：无真实内容、无 R18、无个人路径。
+
+### 文档同步
+
+- `README.md`：下载中心那行补「上图为任务页签，一条重启后暂停待续传、一条已完成」。
+- `docs/screenshots/README.md` 32 → **45 行**：补「关于路径」（为什么要用 `C:/Users/Public`、为什么不能用 `%TEMP%`）与「数据准备的两个坑」（索引绝对路径、fast 与 full 的观感差别）。
+
+验收：`node tests/run-tests.mjs` **1462 通过 / 0 失败**（截图与文档改动不影响测试）。
 ## 十、宣传打磨（README / 模板 / Release / 仓库描述）
 
 ### 10.1 演示夹具（虚构内容，规避任何真实漫画）
