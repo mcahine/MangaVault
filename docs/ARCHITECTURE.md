@@ -72,7 +72,7 @@ MangaVault.exe  (C# + WebView2 宿主：窗口 / 窗口记忆 / 生命周期；�
 | 宿主 ↔ 后端 **原生能力桥**（`/api/desktop/native/next` · `/result`，状态机 `src/modules/desktop/bridge.mjs`、安全判定 `guard.mjs`） | ✅ 已实现（实测 `info` / `reveal` / `open-external` / `native/next` 均有正确响应与拒绝） |
 | v2 的 Edge `--app=` 方案（`desktop/app.mjs` + `启动漫库.vbs`） | 仍保留，作为**无 exe 环境的过渡形态**；v3 已不推荐 |
 
-本节描述的架构**主体已落地**；仍待办的项（独立验收、`docs/DESKTOP.md`）见 [team/v3-progress.md](team/v3-progress.md)。
+本节描述的架构**已全部落地**，独立验收证据见 [team/round-progress.md](team/round-progress.md)；桌面宿主的构建与发布细节见 [DESKTOP.md](DESKTOP.md)。
 
 ---
 
@@ -319,7 +319,7 @@ WebView2 宿主是 GUI 进程。它一旦被拉起，就**不再受父进程（D
 5. **不要在同一个 `run_code` 里等待 GUI 进程**；需要后台执行时用 `run_in_background: true` 点火。
 
 > 现状：`dist/data/host-trace.txt` 曾被一次误操作（想重跑 selftest 但连接中断）删除，需要时用下面的命令重新生成。
-> 依据见 [team/v3-progress.md](team/v3-progress.md) 的「运维教训」一节。
+> 依据见 [team/round-progress.md](team/round-progress.md) 的「运维教训」一节。
 
 ### 10.3 怎么跑（可复现）
 

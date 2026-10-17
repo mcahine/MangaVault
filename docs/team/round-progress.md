@@ -675,3 +675,108 @@ tidy 的规则是「删除类 API 的目标为非字面量变量，且**前 5 �
 
 剩余的 15 分封顶项是 `单文件过大`（28 条）与 `路径安全 low`（12 条，见上），两项都是**结构性**的，不属于本轮「清理垃圾」的范围。
 
+
+---
+
+## 收尾：大文件拆分 + git 上传准备
+
+> 用户原话（m05471）：「对于大文件进行拆除，然后准备在 @MangaVault/ 做好git，我要准备上传这个项目了。文档工作做好了来 总之就是给项目做好收尾」。
+
+### 一、上传前密钥扫描（通过，可安全上传）
+
+扫描 181 个源文件（排除 `dist/`），5 类高危模式：
+
+| 模式 | 命中 | 结论 |
+| --- | --- | --- |
+| JWT `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9` | **0** | 无 token 泄露 |
+| token 字段赋值 | **0** | — |
+| password / passwd | **0** | — |
+| `-----BEGIN` 私钥头 | **0** | — |
+| 长 base64 串 | 2 处，**均无害** | `docs/modules/download.md:105` 是文档示例；`scripts/dev/reader-nav-check.mjs:55` 的 `JPEG_B64` 是 1x1 JPEG 夹具 |
+
+### 二、git 初始化与基线
+
+- `git version 2.47.1.windows.2`；`git init -b main`；身份 `mcahine <2947301431@qq.com>`。
+- 设 `git config core.quotepath false`（否则 `git diff --name-only` 对中文文件名返回 bash 八进制转义串，PowerShell 解析不了）与 `core.autocrlf false`。
+- **重写 `.gitignore`**（57 → 63 行，9 段）。关键修正：原来是 `data/`，会连 `data/.gitkeep` 一起忽略，改为 `data/*` + `!data/.gitkeep`；新增 `__pycache__/`、`*.pyc`、`scripts/dev/tmp-*`、`.env`、`*.pem`、`*.key`。
+- 清理：删 `scripts/dev/tmp-tidy.json` 与 `src/modules/dedupe/engine/python/__pycache__/`。
+- 基线 commit **`313213d`「chore: 收尾基线（拆分前快照）」192 文件**，暂存总量 3346.3KB。
+- **`desktop/refs/` 三个 WebView2 DLL 保留进仓库**：`scripts/build-desktop.mjs:157-164` 编译期硬依赖，保留 = 克隆即可构建。因此 `.gitignore` **不能**写裸 `*.dll`（已补注释说明）。
+
+### 三、9 个大文件拆分（全部完成，1440/0 全绿）
+
+| 原文件 | 拆分前 | 拆分后 | 拆出的新文件 |
+| --- | --- | --- | --- |
+| `src/modules/download/index.mjs` | 1506 | **445** | 9 个路由文件：`routes-account` 156 / `routes-leaderboard` 111 / `routes-status` 141 / `routes-search` 145 / `routes-favorites` 111 / `routes-update` 113 / `routes-tasks` 193 / `routes-export` 67 / `routes-files` 200 |
+| `src/modules/download/engine.mjs` | 1309 | **508** | `engine-util.mjs` 419（工具层）/ `engine-run.mjs` 431（`runTask` + `downloadChapter`） |
+| `src/modules/dedupe/engine/pipeline.mjs` | 908 | **304** | `pipeline-fast.mjs` 621（全部快速查重实现） |
+| `src/modules/dedupe/index.mjs` | 867 | **675** | `views.mjs` 148（11 个纯视图辅助）/ `delete-apply.mjs` 84（`makeApplyDeleteToScan` 工厂） |
+| `src/modules/dedupe/engine/match.mjs` | 775 | **545** | `pixel-search.mjs`（z-MAD 检索层） |
+| `public/app.js` | 822 | **472** | `ui.mjs` 221（DOM 组件层）/ `grid.mjs` 139（虚拟网格） |
+| `public/modules/vault.js` | 1438 | **177** | `vault-kit.mjs` 175 + 5 个页签文件 `vault-tabs-tags` 180 / `-meta` 263 / `-move` 230 / `-audit` 209 / `-misc` 305 |
+| `public/modules/download.js` | 1340 | **297** | `download-share.mjs` 291 + 5 个面板 `download-panel-search` / `-favorites` / `-rank` / `-account` / `-tasks` |
+| `public/modules/dedupe.js` | 938 | **约 300** | `dedupe-parts` / `dedupe-cand` / `dedupe-data` / `dedupe-decide` / `dedupe-dialogs` / `dedupe-list` / `dedupe-scan`（7 个） |
+
+拆分后规模：源文件 165 个 / 38982 行；**超 1000 行的只剩 `tests/download.test.mjs`（1284）**，`src` + `public` 里最大的业务文件是 `src/modules/dedupe/index.mjs`（675）。
+
+**统一拆法（风险最低）**：把巨型闭包里的分节整体搬进新文件，新文件导出工厂 `makeXxx(ctx, state, deps)`，函数体**逐字节不变、连缩进都不动**（原 `mount` 内就是 2 空格基准）。这样不需要重写任何逻辑，风险只剩「解构名单是否完整」。
+
+### 四、拆分踩的坑（已写进 AGENT.md 第 11 节）
+
+1. **漏 import 是唯一硬风险**：`engine.mjs` 拆出后漏 `extOfFormat`（`engine.mjs:64 return extOfFormat(...)`）→ 4 条下载断言红；`vault-parts` 的 TDZ 顺序错 → `Cannot access 'refresh' before initialization`。`node --check` 只查语法，查不出漏解构（那是运行期 ReferenceError），**必须真跑测试**。
+2. **不能用累计偏移量切片**：`dedupe/index.mjs` 整体偏 7 行、`routes-files.mjs` 多切了收尾 `}` → `SyntaxError`。可靠流程是 `git show <基线>:<path>` 取原文 + 逐行 dump 候选边界（起始行/结束行/上一行结尾/下一行开头）核对后再切。
+3. **块结束探测不能按行重置括号深度**：`const rootCard = el(...)` 这类单行块里 `{` 与 `}` 同现，深度归零后又没有 `;` 结尾，会一路吞到下一个块。必须**跨行累计全文件括号深度**，`depth === 0 && 行以分号结尾` 才收。
+4. **`run_code` 的引号嵌套**：单引号字符串里写中文含单引号会 `Expected ',', got 'string literal'`；长文档一律用双引号数组 + `.join(NL)`。
+
+### 五、文档收尾
+
+| 动作 | 结果 |
+| --- | --- |
+| 新建 `docs/modules/library.md` | 188 行：接口全表、索引结构、扫描规则、`inFlight` 修复、6 条已知坑 |
+| 新建 `docs/modules/reader.md` | 163 行：接口全表、`DEFAULTS` 8 键、尺寸预取、预加载调度、翻页条、三个白屏缺陷、快捷键 |
+| `docs/INDEX.md` | 8 处「尚未产出」死标注全部改成真实链接；新增 library / reader / v7-plan；**82 条相对链接 0 断链**（脚本实测） |
+| `README.md` | ①版本 v3 → v1.0.0；②实测规模改成真实 `stats`（360 部 / 1384 话 / 74693 张 / 31.4 GB / 6.4 秒）；③删掉不存在的 `打开漫库.bat`，补 `创建桌面快捷方式.ps1` 与「bat 必须 GBK 编码」的告警；④token 的「本机已失效」改中性描述；⑤排行榜从「尚未提供」移到「已有」；⑥进度指向 → `round-progress.md` |
+| `docs/ARCHITECTURE.md` | 2 处指向 v3-progress 的过时表述改为 round-progress，并去掉「仍待办」 |
+| 新增 `LICENSE` | MIT，1080 字节 |
+| `package.json` | 补 `license` / `author` / `keywords` / 4 个脚本（`audit` `tidy` `build:desktop` `verify`） |
+| 全仓 md 链接体检 | 39 个 md / 108 条相对链接 → 修掉唯一断链（`docs/modules/vault.md` 里指向仓库 `data/` 的失效链接，改成数据目录说明） |
+
+### 六、验收
+
+| 项 | 命令 | 结果 |
+| --- | --- | --- |
+| 全量测试 | `node tests/run-tests.mjs` | **1440 通过 / 0 失败（15 文件）** |
+| dist 重建 + 一致性 | `node scripts/build-desktop.mjs --clean --out=dist` + `dist-consistency.mjs` | app 136 文件，**与源码一致** |
+| md 链接完整性 | 自写脚本 | 39 md / 108 链接 / **0 断链** |
+| 工程卫生 | `node scripts/tidy.mjs` | **69/100（C）**，高危 0 |
+### 七、拆分解构回归（真缺陷，已修并加防回归测试）
+
+拆分把 4 个巨型闭包切成 30+ 个新文件，共享状态靠文件顶部 `const { a, b } = s;` 提供。这套做法逻辑零风险，**唯一风险就是解构名单不完整**，而且它只在运行期炸（`node --check` 查不出）。本轮实际抓到 5 处：
+
+| 文件 | 漏掉的绑定 | 谁在用 | 后果 |
+| --- | --- | --- | --- |
+| `src/modules/download/routes-account.mjs` | `ctx` | `ctx.saveConfig` 在 :30 / :55 / :140 | 登录存 token、退出清 token 全失败 |
+| `src/modules/download/routes-files.mjs` | `ctx`、`root` | `ctx.saveConfig` 在 :154 / :166 / :191；`root()` 在 :82 / :109 / :114 | 保存导出目录失败；打开目录越界拒绝 |
+| `src/modules/download/routes-status.mjs` | `ctx` | `ctx.saveConfig` 在 :134 | **保存代理配置失败**（用户此前报的「代理模式配置无法保存」同一条链路） |
+| `public/modules/download.js` | `updateTabBadge` | SSE `state` 分支 | 下载任务角标不刷新 |
+| `public/modules/download-panel-tasks.mjs` | `taskChip`（应由 `deps.chip` 传入） | `updateTabBadge()` 里 | 同上，且抛 `ReferenceError` |
+
+共同特征：**都只在失败/次要分支里被用到**，主流程（登录成功、搜索、下载）一条都不碰 → 当时单元测试 1428 条全绿、真浏览器下载页签 37/38，只红最后那句「整个流程没有 JS 报错」。
+
+**防回归**：`tests/download-routes.test.mjs` 新增 `runSplitContract(t)`（99 通过 / 0 失败）。做法是从 `index.mjs` 的 `const routeCtx = {...}` 正则取出共享绑定名单（31 个），对每个 `routes-*.mjs` 去注释去字符串后，检查「以 `KEY.` / `KEY(` 形式被使用的键」是否都在 `const {...} = s;` 里；工厂形参（`app`、`s`）从 `export function registerRoutes(app, s)` 里自动加白名单，否则会误报 9 条。
+
+### 八、另一处真缺陷：台账清理与 done 状态存在竞态
+
+`tests/download.test.mjs` 的「任务完成后清理对应台账（避免 data/ 膨胀）」在 verify-all 里偶发红（`实际=true 期望=false`），单独跑 3 次全绿。根因不是测试抖动，是**代码里的顺序问题**：`src/modules/download/engine-run.mjs` 原来先 `patch(task, { state: 'done' })` 再 `await removeLedger(task.id)`，于是「看到 done 的观察者断言台账已清」存在一个窗口，机器忙（verify-all 并行跑 15 个脚本）时窗口被撑开。修法：**先删台账、再置 done**，并在注释里写明理由。
+
+### 九、最终验收（本轮实跑）
+
+| 项 | 命令 | 结果 |
+| --- | --- | --- |
+| 全量测试 | `node tests/run-tests.mjs` | **1440 通过 / 0 失败（15 文件）** |
+| 一键验收 | `node scripts/dev/verify-all.mjs` | **14 通过 / 0 失败 / 0 跳过，300.8s，退出码 0** |
+| dist 重建 + 一致性 | `node scripts/build-desktop.mjs --clean --out=dist` + `dist-consistency.mjs` | app 136 文件，**与源码一致** |
+| 工程卫生 | `node scripts/tidy.mjs` | **69/100（C）**，高危 0 |
+
+分项：单元+集成 1440/0、vault 28/0、滚动 13/13、宿主忙闲 13/13、dist 136 文件、候选删除 15/0、候选删除真浏览器 10/0、指纹 1236/1236、阅读器 28/28、下载页签 38/38、管理台 28/28、孤儿误移 0 例、exe 自检 16/0、启动器 17/0。
+

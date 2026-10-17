@@ -28,6 +28,7 @@
 MangaVault/
 ├── AGENT.md                    本项目入口（你正在读）
 ├── README.md                   面向使用者的说明
+├── LICENSE                     MIT
 ├── package.json                只放脚本与元信息，无 dependencies
 ├── config.example.json         配置模板（提交进仓库）
 ├── desktop/                    桌面宿主：C# 宿主源码、WebView2 引用库、构建脚本
@@ -45,11 +46,12 @@ MangaVault/
 ├── public/                     前端资源（原生 ESM，无打包器）
 │   ├── index.html
 │   ├── theme.css               RISOPRINT 视觉系统（唯一真源）
-│   ├── app.js                  前端内核：路由、DOM、组件、虚拟网格
-│   └── modules/                与后端模块一一对应的前端页面
-├── desktop/                    桌面宿主：C# 源码、构建脚本、图标、托盘
+│   ├── app.js                  前端内核：路由、状态、命令面板、启动自检
+│   ├── ui.mjs                  DOM 组件层：icon / el / toast / modal / 对话框
+│   ├── grid.mjs                虚拟滚动网格（只渲染可视区行）
+│   └── modules/                与后端模块一一对应的前端页面（大页面按页签再拆）
 ├── docs/                       全部文档，见第 7 节
-├── scripts/                    开发/运维脚本（tidy、audit、构建）
+├── scripts/                    开发/运维脚本（tidy、audit、构建、verify-all）
 ├── tests/                      测试，只有 *.test.mjs
 └── data/                       【运行时数据，不进仓库】配置、索引、日志、缓存
 ```
@@ -78,7 +80,7 @@ node scripts/tidy.mjs               # 工程卫生检查
 
 ### 4.1 什么属于代码
 
-`src/`、`public/`、`desktop/`、`docs/`、`tests/`、`scripts/`、`package.json`、`config.example.json`、`AGENT.md`。
+`src/`、`public/`、`desktop/`、`docs/`、`tests/`、`scripts/`、`package.json`、`config.example.json`、`AGENT.md`、`README.md`、`LICENSE`。
 
 这些文件里**不得**出现任何用户机器上的绝对路径，也不得出现特定漫画目录名。
 
@@ -188,6 +190,7 @@ export async function mount(root, ctx) { /* 往 root 里渲染 */ }
 | `docs/modules/*.md` | 每个模块的接口与实现要点 | 要改某个模块 |
 | `docs/AUDIT.md` | 最近一次审计结论与已知缺口 | 想知道哪里薄弱 |
 | `docs/team/*.md` | 团队任务书与分工记录 | 要接续他人工作 |
+| `LICENSE` | MIT 许可证（第三方素材的许可见 README 与 `docs/modules/download.md`） | 想再分发 |
 
 ---
 
@@ -330,6 +333,13 @@ node scripts/dev/vault-acceptance.mjs         # 管理台破坏性操作验收�
 - **扫描器逐行调用「整文件级」的状态机函数，会把注释里的内容当成代码**：`scripts/tidy.mjs` 的 `stripComments(text)`(:109) 靠 `let inBlock = false` 跨行跟踪块注释状态，而调用处写成 `stripQuoted(stripComments(line))` —— **逐行**调用让每行的 `inBlock` 都从 false 重新开始，于是多行块注释内部的字符被当作真代码。这正是 `src/modules/download/api.mjs:69` 那条「模板字符串」误报的成因（那行在 60-75 行的块注释里，内容是「HTTP 200 + 反引号包裹的 JSON」加「（41 字节，没有 data）」）。修法：先取整文件剥离后的行数组，再逐行 `stripQuoted`。**任何带跨行状态的解析函数，调用点必须与它的状态粒度一致**；否则「扫描器报的问题」会变成伪造的待办。
 - **`path.join(process.env.X, 名字)` 在环境变量为空时会拼出相对路径，落进当前工作目录**：实测 `path.join(undefined, 'MangaVault')` 得到的就是相对路径字符串 `MangaVault`（不是绝对路径、也不报错），随后任何 `mkdir`/`rm` 都会作用到 cwd 下的同名目录。本仓库的 cwd 就是仓库根，所以这类写法是**潜在的仓库内写入**。已修三处：`scripts/dev/dedupe-cand-delete-e2e.mjs:12`（改成 `const LOCAL = process.env.LOCALAPPDATA || os.homedir();`）、`tests/vault.test.mjs` 与 `scripts/dev/vault-orphan-race-check.mjs` 的 `CHILD_SRC` 子进程脚本（改成 `const dataDirEnv = process.env.MV_DATA_DIR || os.tmpdir();`）。**凡是把环境变量直接喂给 `path.join` 的地方，都要给一个绝对路径兜底。**
 - **「扫描器的窗口宽度」不等于「代码没有守卫」，改代码去迎合扫描器只会增加伪守卫**：tidy 的路径安全规则是「删除类 API 的目标是非字面量变量，且**前 5 行**窗口内出现 `isAbsolute|safeJoin|insideRoot|startsWith|ownerRootOf` 才算有守卫」。实测剩下 12 条 low **全部已有真实守卫，只是守卫在 5 行窗口之外**（如 `src/modules/vault/ops/undo.mjs:25` 的 `fsp.rm(fromAbs)`，其守卫 `const abs = safeJoin(root.path, it.dir)`(:150) 与 `if (!(await exists(abs)))`(:151) 在调用点上方更远处；`src/modules/download/ledger.mjs:343` 的 `ledgerPath(taskId)`(:84) 走 `sanitizeName` 已杜绝穿越）。**判定为「不修」，并把这个结论写进文档**，避免下一轮又把这些翻出来重审一遍。
+- **拆分大文件时，「函数体逐字节不变 + 顶部解构共享上下文」是最安全的做法，但它有唯一一个硬风险：漏 import**：把一个巨型闭包拆成 `routes-*.mjs` / `*-parts.mjs` 时，最省事的做法是让新文件顶部 `const { a, b, c } = s;` 解构共享绑定，函数体一个字都不改（连缩进都不动，原 mount 内就是 2 空格基准）。这样逻辑零风险，**全部风险集中在「我解构的名单是否完整」**。实测踩过两次：`engine.mjs` 拆出后漏掉 `extOfFormat`（4 条下载断言立刻红，`任务下载完成 | 实际="error"`），`vault-parts` 拆出后 TDZ 顺序错（`Cannot access 'refresh' before initialization`）。**这里绝不能靠肉眼核名单 —— 用脚本对新文件里出现的每个裸标识符去原文件比对，或用 `node --check` + 真实跑测试来兜底；`node --check` 只查语法，查不出漏解构（那是运行期 ReferenceError）。**
+- **切片前必须从 git 基线重新取原文，并且逐行 dump 边界行核对**：拆分时我两次把切片索引算错——`dedupe/index.mjs` 整体偏 7 行切出重复片段、`routes-files.mjs` 多切了 register 的收尾 `}` 导致 `SyntaxError: Unexpected token '}'`。根因是「读到的文件已经被上一次失败的重写污染过」，而我用的是**累计偏移量**。可靠流程：`git show <基线commit>:<path> > __base.mjs`，再 `console.log(n + '|' + lines[n-1])` 逐条打印候选边界（起始行、结束行、上一行的结尾、下一行的开头），确认四件事都对上才切。**永远不要用「上次切到第 N 行，这次大概在第 N±k 行」这种推算。**
+- **`run_code` 里写长文档/长脚本，引号嵌套是最常见的翻车点**：用单引号字符串写含 `'` 的中文 markdown 会触发 `Expected ',', got 'string literal'`；用反引号写含 `${}` 的内容会被当成插值；PowerShell 内联命令里的嵌套引号几乎必坏。可靠做法：①长文档用**双引号字符串数组 + `.join(NL)`**（`const NL = String.fromCharCode(10)`），需要单引号时用 `String.fromCharCode(39)` 拼接；②PowerShell 诊断脚本写成 `.ps1` 文件再执行，不要内联；③`.concat([...])` 链式里任一参数为 `undefined` 会报 `Cannot read properties of undefined (reading 'concat')`，宁可写成多个 `.push()`。
+- **解构共享上下文时，最容易漏的是「只在次要分支里才用到的绑定」，因为主流程全绿**：`routes-account.mjs` / `routes-files.mjs` / `routes-status.mjs` 三个文件都漏解构 `ctx`，而它们用 `ctx.saveConfig()` 的地方全是**失败/清理分支**（退出登录、清 token、保存代理）—— 登录、搜索、排行榜、下载这些主路径一条都不碰它，所以单元测试 1428 条全绿、真浏览器下载页签 **37/38**（只红最后那条「整个流程没有 JS 报错」）。同类还有 `download-panel-tasks.mjs` 的 `taskChip`（只在 `updateTabBadge()` 里用，而它只由 SSE `state` 事件触发）。**判据：拆分后必须对每个新文件里出现的裸标识符做一次静态比对（见上一条），不能靠测试兜底 —— 测试只覆盖它跑过的分支。**
+- **「整个流程没有 JS 报错」这类汇总断言必须把异常的真实描述打出来，否则它只是红灯不给坐标**：`download-tabs-check.mjs` 原来写 `jsErrors.push('未捕获异常: ' + (d.text || ...))`，而 `Runtime.exceptionThrown` 的 `params.exceptionDetails.text` 内容就是一句 `Uncaught`，真正的 `ReferenceError: xxx is not defined` 在 `exceptionDetails.exception.description` 里（带 message + stack）。表现是折腾了三轮只能看到「未捕获异常: Uncaught」。**取异常文本的顺序必须是 `exception.description || exception.value || exceptionDetails.text`。**
+- **CDP 脚本的「失败现场」必须在 catch 分支也能打出来**：`download-tabs-check.mjs` 的 `pageLogs` 只在**正常走完**时打印，而超时抛错走 `main().catch` —— 页面日志（我插的 `DBG`、`console.error`）全丢，只剩一句「等待超时」。修法：`globalThis.__mvPageLogs = pageLogs` 让 catch 分支也能取到，并**打印尾部而不是头部**（前 40 条全是首屏的 400 噪声）。**任何「攒起来最后统一打印」的诊断信息，都要确认它在异常路径上也真的会被打印。**
+
 ## 12. 许可与内容声明
 
 本项目是**本地文件管理工具**，不提供、不托管、不分发任何漫画内容，也不内置任何破解或绕过能力。

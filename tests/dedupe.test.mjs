@@ -175,11 +175,14 @@ export default async function (t) {
 
     // ---------- (b6) 源码契约 ----------
     const matchSrc = fs.readFileSync(path.join(pathRepo, 'src', 'modules', 'dedupe', 'engine', 'match.mjs'), 'utf8');
+    // 像素比对本体已从 match.mjs 拆到 pixel-search.mjs，契约按「检索底层 + 比对本体」两份合起来断言
+    const pixelSrc = fs.readFileSync(path.join(pathRepo, 'src', 'modules', 'dedupe', 'engine', 'pixel-search.mjs'), 'utf8');
+    const pixelEngineSrc = matchSrc + pixelSrc;
     const scanSrc = fs.readFileSync(path.join(pathRepo, 'src', 'modules', 'dedupe', 'engine', 'scan.mjs'), 'utf8');
-    t.ok(matchSrc.indexOf('const v = zMadOf(lib, buf, off, qm, qiv, i);') >= 0, '(b6) 精算必须用 z-MAD，不许退回 raw MAD');
+    t.ok(pixelEngineSrc.indexOf('const v = zMadOf(lib, buf, off, qm, qiv, i);') >= 0, '(b6) 精算必须用 z-MAD，不许退回 raw MAD');
     t.ok(matchSrc.indexOf('zMadOf') >= 0 && matchSrc.indexOf('searchZRange') >= 0, '(b6) match.mjs 暴露 z-MAD 搜索');
-    t.ok(matchSrc.indexOf('judgeCoverage') >= 0, '(b6) 像素阶段必须走覆盖率口径');
-    t.ok(matchSrc.indexOf('cover.cov1 >= RESCUE_MIN') >= 0, '(b6) 救援必须带 cov1 守卫');
+    t.ok(pixelEngineSrc.indexOf('judgeCoverage') >= 0, '(b6) 像素阶段必须走覆盖率口径');
+    t.ok(pixelEngineSrc.indexOf('cover.cov1 >= RESCUE_MIN') >= 0, '(b6) 救援必须带 cov1 守卫');
     t.ok(scanSrc.indexOf('o.cover ? judgeCoverage(o.cover) : judgeOf') >= 0, '(b6) recordOf 按 cover 是否存在切换口径');
     t.log('(b) 判定边界与覆盖率口径断言完成');
 
@@ -187,7 +190,14 @@ export default async function (t) {
     // 真浏览器验收实测：点完「确认重复（可删）」后马上点「执行删除…」，弹窗会在决策
     // 还没落盘时读候选数据 → 「下一步」按钮被禁用（next=disabled）。修法是保存挂起的
     // 落盘任务、openDelete 先 await 它。这里是那两处的最小静态契约，防止被改回去。
-    const webDedupe = fs.readFileSync(path.join(pathRepo, 'public', 'modules', 'dedupe.js'), 'utf8');
+    // 查重前端已按职责拆成多个文件（dedupe.js 只做装配），所以这里扫整个 public/modules/dedupe*.mjs，
+    // 而不是钉死单个文件 —— 否则一次纯搬运就会让契约假红。
+    const dedupeWebDir = path.join(pathRepo, 'public', 'modules');
+    const webDedupe = fs.readdirSync(dedupeWebDir)
+      .filter(function (n) { return /^dedupe.*\.m?js$/.test(n); })
+      .sort()
+      .map(function (n) { return fs.readFileSync(path.join(dedupeWebDir, n), 'utf8'); })
+      .join('\n/* ---- 文件分隔 ---- */\n');
     t.ok(webDedupe.indexOf('let pendingDecision = null;') >= 0, '(b7) 前端保存挂起的决策落盘任务');
     t.ok(webDedupe.indexOf('pendingDecision = task;') >= 0, '(b7) decideCand 把落盘任务挂到 pendingDecision');
     t.ok(webDedupe.indexOf('if (pendingDecision) { try { await pendingDecision; }') >= 0,

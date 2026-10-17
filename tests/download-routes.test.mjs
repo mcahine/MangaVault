@@ -10,6 +10,9 @@ import * as sources from '../src/modules/download/sources/index.mjs';
 
 export const name = '下载路由（排行榜 / 账号资料）';
 
+/* 仓库根：路由文件都从 src/modules/download 下读，用 import.meta.url 拼（中文目录不能走 URL.pathname）。 */
+const ROOT = path.resolve(import.meta.dirname, '..');
+
 /**
  * 本用例只测新增的两个只读路由：GET /api/download/leaderboard 与 GET /api/download/profile。
  * 全程离线：真 HTTP + listen(0) 随机端口 + 假 transport，绝不打真实网络，也不碰 8775。
@@ -315,4 +318,70 @@ t.ok(String(pf.data.profile.avatar).indexOf(encodeURIComponent('https://img.pica
     try { await rmWithRetry(tmp); } catch (e) { t.log('临时目录清理失败（不影响断言）：' + tmp + ' → ' + (e && e.code)); }
   }
   t.log('排行榜/账号资料路由用例全部离线完成，未访问真实网络');
+
+  await runSplitContract(t);
 }
+
+/* ================= 拆分契约：路由文件必须解构自己用到的共享绑定 ================= */
+/*
+ * 为什么需要这条：routes-*.mjs 是从 index.mjs 的 register() 闭包里切出来的，
+ * 共享绑定靠文件顶部 `const { a, b } = s;` 逐字提供。漏解构的后果是**运行期 ReferenceError**，
+ * 而 `node --check` 只查语法、查不出来；测试也只覆盖它真正跑过的分支。
+ * 实测三个文件都漏了 `ctx`（只在「退出登录 / 清 token / 存代理」这些失败分支里用），
+ * 单测 1428 条全绿、真浏览器只有最后那条「整个流程没有 JS 报错」变红。
+ */
+export async function runSplitContract(t) {
+  const dlDir = path.join(ROOT, 'src', 'modules', 'download');
+  const indexSrc = await fsp.readFile(path.join(dlDir, 'index.mjs'), 'utf8');
+
+  /* 1) 从 index.mjs 的 routeCtx 里取出「共享绑定」名单。 */
+  const ctxBlock = (indexSrc.match(/const routeCtx = \{([\s\S]*?)\n  \};/) || [])[1] || '';
+  const shared = [];
+  for (const m of ctxBlock.matchAll(/([A-Za-z_$][\w$]*)\s*:/g)) shared.push(m[1]);
+  t.ok(shared.length >= 20, 'routeCtx 解析出共享绑定 ' + shared.length + ' 个（应 >= 20）');
+  t.ok(shared.indexOf('ctx') >= 0, 'routeCtx 名单里含 ctx');
+
+  /* 2) 逐个路由文件核对：凡是「以 KEY. / KEY( 形式被使用」的共享键，都必须在解构名单里。 */
+  const files = (await fsp.readdir(dlDir)).filter(function (f) { return /^routes-[\w-]+\.mjs$/.test(f); });
+  t.ok(files.length >= 9, 'routes-*.mjs 文件数 = ' + files.length + '（应 >= 9）');
+  for (const f of files) {
+    const raw = await fsp.readFile(path.join(dlDir, f), 'utf8');
+    const src = stripForContract(raw);
+    const destructured = new Set();
+    /* 工厂形参（app、s）本来就在作用域内，不需要解构；漏掉它们会误报。 */
+    const pm = src.match(/export function registerRoutes\s*\(([^)]*)\)/);
+    if (pm) for (const part of pm[1].split(',')) { const k = part.trim(); if (k) destructured.add(k); }
+    const dm = src.match(/const\s*\{([^}]*)\}\s*=\s*s;/);
+    if (dm) for (const part of dm[1].split(',')) { const k = part.trim(); if (k) destructured.add(k); }
+    const missing = [];
+    for (const key of shared) {
+      const esc = key.replace(/\$/g, '\\$');
+      const used = new RegExp('(^|[^\\w$.])' + esc + '\\s*[.(]').test(src);
+      if (used && !destructured.has(key)) missing.push(key);
+    }
+    t.eq(missing.join(','), '', f + ' 用到的共享绑定都已解构（漏了：' + (missing.join(',') || '无') + '）');
+  }
+}
+
+/** 去掉注释与字符串字面量：注释里的名字、字符串里的文案都不算「使用」。 */
+function stripForContract(src) {
+  let out = '';
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    const c2 = src[i + 1];
+    if (c === '/' && c2 === '/') { while (i < src.length && src[i] !== String.fromCharCode(10)) i++; continue; }
+    if (c === '/' && c2 === '*') { i += 2; while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i++; i += 2; continue; }
+    if (c === "'" || c === '"' || c === '`') {
+      const q = c;
+      i++;
+      while (i < src.length) { if (src[i] === '\\') { i += 2; continue; } if (src[i] === q) { i++; break; } i++; }
+      out += '""';
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+

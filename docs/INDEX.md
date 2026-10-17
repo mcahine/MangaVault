@@ -62,19 +62,19 @@
 
 | 模块 | 文档 | 一句话 |
 | --- | --- | --- |
-| 漫画库（扫描/索引/列表/封面） | `docs/modules/library.md`（尚未产出） | 库的只读视图与扫描器 |
-| 阅读器 | 源码 `src/modules/reader/` | 翻页、进度、模式 |
+| 漫画库（扫描/索引/列表/封面） | [modules/library.md](modules/library.md) | 库的只读视图与扫描器 |
+| 阅读器 | [modules/reader.md](modules/reader.md) | 翻页、进度、模式、尺寸预取 |
 | 管理台 | [modules/vault.md](modules/vault.md) | 标签体系、批量整理、校验、回收站、备份 |
 | 下载中心 | [modules/download.md](modules/download.md) | 哔咔登录、搜索、任务、导出 |
-| 下载源适配器 | `docs/DOWNLOAD_SOURCES.md`（v3 新增，尚未产出） | 怎么接一个新的下载源 |
+| 下载源适配器 | [DOWNLOAD_SOURCES.md](DOWNLOAD_SOURCES.md) | 怎么接一个新的下载源 |
 | 查重台 | [modules/dedupe.md](modules/dedupe.md) | 字节查重 + 像素指纹 + 审核删除 |
-| 桌面宿主 | `docs/DESKTOP.md`（v3 新增，尚未产出） | exe 宿主、构建、打包、发布 |
+| 桌面宿主 | [DESKTOP.md](DESKTOP.md) | exe 宿主、构建、打包、发布 |
 
 ### 我想做桌面端 / 打包
 
 | 我想…… | 去哪 |
 | --- | --- |
-| 看懂桌面宿主架构（exe + WebView2） | [ARCHITECTURE.md](ARCHITECTURE.md) 第 2、10 节；`docs/DESKTOP.md`（尚未产出） |
+| 看懂桌面宿主架构（exe + WebView2） | [ARCHITECTURE.md](ARCHITECTURE.md) 第 2、10 节；[DESKTOP.md](DESKTOP.md) |
 | 构建 exe | `node scripts/build-desktop.mjs`（可加 `--with-node` 打包 Node） |
 | 验证 exe 真的能跑 | `node scripts/dev/desktop-selftest.mjs`（12 条证据，见 [ARCHITECTURE.md](ARCHITECTURE.md) 第 10 节） |
 | 知道桌面桥提供哪些原生能力 | [README.md](../README.md) 的「方式 A」原生能力表；接口清单见 `src/modules/desktop/index.mjs` 的 `meta.help` |
@@ -88,7 +88,9 @@
 | 看任务分工与写入范围 | [team/README.md](team/README.md) |
 | 看 v3 任务书（6 条用户问题） | [team/v3-taskbook.md](team/v3-taskbook.md) |
 | 看 v4 任务书（翻页方向 bug + 下载能力补全 + 冻结接口契约） | [team/v4-taskbook.md](team/v4-taskbook.md) |
-| **看当前进度**（谁做完了、卡在哪） | [team/v4-progress.md](team/v4-progress.md) |
+| **看当前进度**（谁做完了、卡在哪、每轮的验收证据） | [team/round-progress.md](team/round-progress.md) |
+| 看 v7 快速查重的设计 | [team/dedupe-v7-fast-plan.md](team/dedupe-v7-fast-plan.md) |
+| 看 v4 历史进度 | [team/v4-progress.md](team/v4-progress.md) |
 | 看 v3 历史进度 | [team/v3-progress.md](team/v3-progress.md) |
 | 看某个成员做了什么、证据是什么 | `docs/team/task-*.md`（例：[task-7-data-separation.md](team/task-7-data-separation.md)、[task-9-ui-scroll.md](team/task-9-ui-scroll.md)） |
 
@@ -117,15 +119,16 @@
 | 文件 | 内容 |
 | --- | --- |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 进程模型、exe 宿主、请求生命周期、数据流、代码与数据分离 |
-| `docs/DESKTOP.md`（尚未产出） | Windows exe 宿主：构建、打包、原生能力、发布 |
-| `docs/DOWNLOAD_SOURCES.md`（尚未产出） | 下载源适配器契约与新增步骤 |
-| `docs/NORMALIZE_REPORT.md`（尚未产出） | 先期漫画规范化前后对比与样例 |
+| [DESKTOP.md](DESKTOP.md) | Windows exe 宿主：构建、打包、原生能力、发布 |
+| [DOWNLOAD_SOURCES.md](DOWNLOAD_SOURCES.md) | 下载源适配器契约与新增步骤 |
+| [NORMALIZE_REPORT.md](NORMALIZE_REPORT.md) | 先期漫画规范化前后对比与样例 |
 
 ### 模块文档
 
 | 文件 | 模块 |
 | --- | --- |
-| `docs/modules/library.md`（尚未产出） | 漫画库（扫描器、索引、列表） |
+| [modules/library.md](modules/library.md) | 漫画库（扫描器、索引、列表） |
+| [modules/reader.md](modules/reader.md) | 阅读器（章节、进度、尺寸预取、翻页条） |
 | [modules/vault.md](modules/vault.md) | 管理台（标签、整理、校验、回收站、备份） |
 | [modules/download.md](modules/download.md) | 下载中心 |
 | [modules/dedupe.md](modules/dedupe.md) | 查重台 |
@@ -137,7 +140,9 @@
 | --- | --- |
 | [AUDIT.md](AUDIT.md) | 静态审计结论、已知缺口、每条带复现命令 |
 | [team/README.md](team/README.md) | 角色与写入范围、共享热点文件、接口冻结表 |
-| [team/v3-progress.md](team/v3-progress.md) | **进度看板**：已完成 / 待验收 / 未开始三档 + 运维教训 + 当前测试基线 |
+| [team/round-progress.md](team/round-progress.md) | **最新进度看板**：按轮次记录每个需求的根因、改动与验收证据 |
+| [team/v4-progress.md](team/v4-progress.md) | v4 进度看板：已完成 / 待验收 / 未开始三档 + 运维教训 + 测试基线 |
+| [team/v3-progress.md](team/v3-progress.md) | v3 历史进度看板 |
 | [team/v3-taskbook.md](team/v3-taskbook.md) | v3 全部任务的现状/目标/验收/边界 |
 | [team/v4-taskbook.md](team/v4-taskbook.md) | **v4 冻结契约**：阅读器翻页方向唯一真源、leaderboard/profile 接口契约、5 条工作流文件所有权、参考下载器 26 命令对账表 |
 | [team/task-7-data-separation.md](team/task-7-data-separation.md) | T7 数据/代码分离：四级优先级、模板播种、既有索引迁移 |
@@ -195,3 +200,4 @@ node scripts/dev/ui-scroll-check.mjs    # 真浏览器验证列表滚动
 - 新增文档 → 在「文档地图」加一行，并在「按我想做什么」里找到对应意图。
 - 文档改路径 → 记得回来改链接（仓库有交叉引用检查，断链会被报出来）。
 - 写成 `代码体` 而不是链接的条目，表示**该文件尚未落地** —— 这是事实状态；等它交付后再改成链接和标题。
+- 当前索引里**已没有**未落地条目；新增待办时请沿用同一约定。

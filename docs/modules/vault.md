@@ -401,7 +401,7 @@ vault 的"管理对象清单"不是自己扫盘的：
 
 脚本全程把库根指向 `%TEMP%` 的隔离样本（2 个库根各 1 部，样本里故意埋了 0 字节坏图 + 缺章节元数据 + 不规范目录名），结束时恢复原库根并重新扫描。**绝不触碰真实漫画。**
 
-本次运行的结论记录在 [vault-acceptance.log](../../data/vault-acceptance.log)（「通过 28 / 失败 0」）。
+本次运行的结论写到数据目录的 `vault-acceptance.log`（即 `%LOCALAPPDATA%\MangaVault\vault-acceptance.log`，由 `src/core/config.mjs` 的 `dataPath()` 决定，**不会**落在代码仓库里）。
 
 | # | 断言内容 | 结论 |
 |---:|---|---|

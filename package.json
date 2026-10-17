@@ -4,10 +4,17 @@
   "private": true,
   "type": "module",
   "description": "漫库 MangaVault —— 本地漫画管理 / 阅读 / 下载 / 查重一体化系统（零第三方依赖）",
+  "license": "MIT",
+  "author": "MangaVault contributors",
+  "keywords": ["comic", "manga", "reader", "library", "windows", "webview2"],
   "engines": { "node": ">=20.11" },
   "scripts": {
     "start": "node src/server.mjs",
     "scan": "node src/cli.mjs scan",
-    "test": "node tests/run-tests.mjs"
+    "test": "node tests/run-tests.mjs",
+    "audit": "node scripts/audit.mjs",
+    "tidy": "node scripts/tidy.mjs",
+    "build:desktop": "node scripts/build-desktop.mjs",
+    "verify": "node scripts/dev/verify-all.mjs"
   }
 }

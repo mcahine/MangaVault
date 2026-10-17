@@ -9,10 +9,12 @@ import { safeTmpDir } from '../src/core/util.mjs';
 import { resolvePaths, keyOf } from '../src/modules/dedupe/engine/paths.mjs';
 import { readSet, coarseOf } from '../src/modules/dedupe/engine/fpio.mjs';
 import {
-  loadLibraryFingerprints, pixelCompareUnit, runPixelStage, PIXEL_WORKERS_MAX,
+  loadLibraryFingerprints, PIXEL_WORKERS_MAX,
   grayStats, zMadOf, SEARCH_LIMIT, RESCUE_THRESH, SD_FLOOR,
   pickPixelWorkers, planLibShared, slotOf, slotCursor, atSlot, freeMemMb
 } from '../src/modules/dedupe/engine/match.mjs';
+// 像素比对本体已从 match.mjs 拆到 pixel-search.mjs（match.mjs 只留检索底层）
+import { pixelCompareUnit, runPixelStage } from '../src/modules/dedupe/engine/pixel-search.mjs';
 import { judgeCoverage } from '../src/modules/dedupe/engine/scan.mjs';
 
 export const name = '像素比对并行化';
@@ -231,40 +233,44 @@ export default async function (t) {
 
     // ============ (d) worker 不可用时的回退（源码契约） ============
     const matchSrc = fs.readFileSync(path.join(pathRepo, 'src', 'modules', 'dedupe', 'engine', 'match.mjs'), 'utf8');
+    // 像素比对本体在 pixel-search.mjs：源码契约断言针对「这两份文件合起来」，
+    // 拆文件不该让契约失效，也不该因为搬家而假红
+    const pixelSrc = fs.readFileSync(path.join(pathRepo, 'src', 'modules', 'dedupe', 'engine', 'pixel-search.mjs'), 'utf8');
+    const engineSrc = matchSrc + pixelSrc;
     const workerSrc = fs.readFileSync(path.join(pathRepo, 'src', 'modules', 'dedupe', 'engine', 'pixel-worker.mjs'), 'utf8');
-    const iCall = matchSrc.indexOf('parallelMap = await runPixelParallel(');
+    const iCall = engineSrc.indexOf('parallelMap = await runPixelParallel(');
     // 注意：必须从 iCall 之后开始找，否则会命中前面那句 let parallelMap = null; 声明
-    const iNull = matchSrc.indexOf('parallelMap = null;', iCall);
-    const iCatch = matchSrc.lastIndexOf('} catch (e) {', iNull);
-    const iSerial = matchSrc.indexOf('res = pixelCompareUnit(lib, u, fp, { pixelThreshold: threshold });');
+    const iNull = engineSrc.indexOf('parallelMap = null;', iCall);
+    const iCatch = engineSrc.lastIndexOf('} catch (e) {', iNull);
+    const iSerial = engineSrc.indexOf('res = pixelCompareUnit(lib, u, fp, { pixelThreshold: threshold });');
     t.ok(iCall >= 0, '(d) runPixelStage 里确实 await runPixelParallel');
     t.ok(iCatch > iCall, '(d) 并行调用被 try/catch 包住');
     t.ok(iNull > iCall, '(d) 并行抛错后 parallelMap 被置 null（静默回退）');
     t.ok(iSerial > iNull, '(d) 回退分支仍调用 pixelCompareUnit，保证串行口径');
-    t.ok(matchSrc.indexOf('return Promise.resolve(null);') >= 0, '(d) 单元不足时直接返回 null 跳过并行');
-    t.ok(matchSrc.indexOf('if (!o.signal || !o.signal.aborted)') >= 0, '(d) 已中止的任务不再启动并行');
+    t.ok(engineSrc.indexOf('return Promise.resolve(null);') >= 0, '(d) 单元不足时直接返回 null 跳过并行');
+    t.ok(engineSrc.indexOf('if (!o.signal || !o.signal.aborted)') >= 0, '(d) 已中止的任务不再启动并行');
 
     // ============ (a) 常量与源码契约 ============
     t.eq(PIXEL_WORKERS_MAX, 6, '(a) PIXEL_WORKERS_MAX === 6');
-    t.ok(matchSrc.indexOf('node:worker_threads') >= 0, '(a) match.mjs 引入 node:worker_threads');
-    t.ok(matchSrc.indexOf('SharedArrayBuffer') >= 0, '(a) match.mjs 使用 SharedArrayBuffer 共享库侧大数组');
+    t.ok(engineSrc.indexOf('node:worker_threads') >= 0, '(a) 引擎引入 node:worker_threads');
+    t.ok(engineSrc.indexOf('SharedArrayBuffer') >= 0, '(a) 引擎使用 SharedArrayBuffer 共享库侧大数组');
     // ★内存修复回归★ linv/lnrm 不再进共享内存（由 worker 从共享 gray 现算），
     // 否则每张图要多拷 8 字节 × 线程数，且共享缓冲要多申请两块。
-    t.ok(matchSrc.indexOf('new SharedArrayBuffer(lib.linv') < 0 && matchSrc.indexOf('new SharedArrayBuffer(lib.lnrm') < 0,
+    t.ok(engineSrc.indexOf('new SharedArrayBuffer(lib.linv') < 0 && engineSrc.indexOf('new SharedArrayBuffer(lib.lnrm') < 0,
       '(a) linv/lnrm 不再单独申请 SharedArrayBuffer（改为 worker 内现算）');
-    t.ok(matchSrc.indexOf('sabLinv') < 0 && matchSrc.indexOf('sabLnrm') < 0, '(a) 源码里不再有 sabLinv/sabLnrm 残留');
+    t.ok(engineSrc.indexOf('sabLinv') < 0 && engineSrc.indexOf('sabLnrm') < 0, '(a) 源码里不再有 sabLinv/sabLnrm 残留');
     // ★内存修复回归★ 共享缓冲必须分块申请：单块 63MB 在低内存机器上会被直接拒绝并崩掉
-    t.ok(matchSrc.indexOf('SAB_CHUNK_BYTES = 16 * 1024 * 1024') >= 0, '(a) 共享缓冲按 16MB 分块申请，单次分配上限受控');
-    t.ok(matchSrc.indexOf('.finally(function () {') >= 0 && matchSrc.indexOf('lib.map = null;') >= 0,
+    t.ok(engineSrc.indexOf('SAB_CHUNK_BYTES = 16 * 1024 * 1024') >= 0, '(a) 共享缓冲按 16MB 分块申请，单次分配上限受控');
+    t.ok(engineSrc.indexOf('.finally(function () {') >= 0 && engineSrc.indexOf('lib.map = null;') >= 0,
       '(a) 比对结束后松开共享缓冲引用，不再常驻到下一次扫描');
-    t.ok(matchSrc.indexOf('runPixelParallel') >= 0, '(a) match.mjs 定义 runPixelParallel');
+    t.ok(engineSrc.indexOf('runPixelParallel') >= 0, '(a) 引擎定义 runPixelParallel');
     t.ok(workerSrc.indexOf('pixelCompareUnit') >= 0, '(a) worker 复用 pixelCompareUnit，与串行同一套算法');
-    t.ok(workerSrc.indexOf('match.mjs') >= 0, '(a) worker 从 match.mjs 引入算法，不会出现两份实现漂移');
+    t.ok(workerSrc.indexOf('pixel-search.mjs') >= 0, '(a) worker 从 pixel-search.mjs 引入算法，不会出现两份实现漂移');
     t.ok(workerSrc.indexOf('d.shared') >= 0, '(a) worker 通过分块 SAB 映射表访问库侧数组');
     t.ok(workerSrc.indexOf('grayStats(') >= 0 && workerSrc.indexOf('lib.linv[i] =') >= 0,
       '(a) worker 自己从共享 gray 现算 linv/lnrm，与主线程同口径');
     // ★内存放大回归★ gray/coarse 绝不能当 workerData 传：结构化克隆会把 63MB 复制一份给每个线程
-    t.ok(matchSrc.indexOf('grayBuf') < 0 && matchSrc.indexOf('coarseBuf') < 0,
+    t.ok(engineSrc.indexOf('grayBuf') < 0 && engineSrc.indexOf('coarseBuf') < 0,
       '(a) workerData 里没有 gray/coarse（否则每个 worker 会被结构化克隆多拷 63MB）');
 
     // ============ (e) 进度回调：并行路径下也要被调用 ============

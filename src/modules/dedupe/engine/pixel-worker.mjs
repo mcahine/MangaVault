@@ -1,5 +1,5 @@
 // engine/pixel-worker.mjs — 像素比对工作线程。
-// 设计要点：worker 里**复用 match.mjs 的同一套判定代码**（pixelCompareUnit），
+// 设计要点：worker 里**复用 pixel-search.mjs 的同一套判定代码**（pixelCompareUnit），
 // 只把库侧大数组（gray/coarse）换成 SharedArrayBuffer 的分块视图，
 // 因此并行与单线程走的是完全相同的算法，不存在两份实现漂移的风险。
 //
@@ -12,7 +12,8 @@ import { parentPort, workerData } from 'node:worker_threads';
 import path from 'node:path';
 import { readSet, FP_GRAY_BYTES } from './fpio.mjs';
 import { keyOf } from './paths.mjs';
-import { pixelCompareUnit, grayStats, SD_FLOOR } from './match.mjs';
+import { pixelCompareUnit } from './pixel-search.mjs';
+import { grayStats, SD_FLOOR } from './match.mjs';
 
 /** 标准差的倒数；低于 SD_FLOOR 的平坦页返回 0（与 match.mjs 的 invOf 逐字同口径）。 */
 function invOf(sd) { return sd < SD_FLOOR ? 0 : 1 / sd; }

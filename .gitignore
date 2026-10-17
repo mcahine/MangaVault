@@ -19,6 +19,8 @@ build/
 *.exe
 *.pdb
 *.dll.tmp
+# 注意：desktop/refs/ 下的三个 WebView2 DLL 是**源码依赖**（build-desktop.mjs
+# 编译期硬依赖，缺一个就构建失败），必须进仓库，所以这里绝不能写裸 *.dll。
 
 # ---------- Python 字节码缓存 ----------
 # src/modules/dedupe/engine/python/ 下的脚本由 Node 调起，会生成 __pycache__

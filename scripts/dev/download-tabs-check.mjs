@@ -265,6 +265,7 @@ async function main() {
   let cdp = null;
   const jsErrors = [];
   const pageLogs = [];
+globalThis.__mvPageLogs = pageLogs;
   const results = [];
   const traces = [];
   /* 失败时也要能看见已经跑过的检查项：main() 中途抛错会跳过下面的报告段，
@@ -377,7 +378,11 @@ async function main() {
         if (type === 'error') jsErrors.push('console.error: ' + txt);
       } else if (msg.method === 'Runtime.exceptionThrown') {
         const d = msg.params && msg.params.exceptionDetails;
-        jsErrors.push('未捕获异常: ' + (d && (d.text || (d.exception && d.exception.description)) || 'unknown'));
+        /* 先取 exception.description（带 message + stack），d.text 只有一句 "Uncaught"，
+           单独用它会把所有未捕获异常都变成无法定位的同一句话。 */
+        const ex = d && d.exception;
+        const detail = (ex && (ex.description || ex.value)) || (d && d.text) || 'unknown';
+        jsErrors.push('未捕获异常: ' + String(detail).split('\n').slice(0, 3).join(' / '));
       } else if (msg.method === 'Log.entryAdded') {
         const e = msg.params && msg.params.entry;
         if (e && e.level === 'error') pageLogs.push('log-error: ' + e.text);
@@ -578,6 +583,7 @@ async function main() {
       + ' await new Promise(function(r){setTimeout(r,400);});'
       + ' var ok = Array.prototype.slice.call(document.querySelectorAll(".modal-foot button")).filter(function(x){return /退出登录/.test(x.textContent||"");})[0];'
       + ' if (!ok) return "no-confirm"; ok.click(); return "confirmed"; })()');
+    log('退出点击结果', String(loggedOut));
     const backToLogin = await waitFor('Boolean(document.querySelector(".mv-dl-login"))', 15000, '退出后回到登录表单');
     check('退出登录后回到未登录态（重新出现登录表单）', loggedOut === 'confirmed' && Boolean(backToLogin), '确认=' + loggedOut);
     const inputs = await evaluate(cdp, '(function(){ return Array.prototype.slice.call(document.querySelectorAll(".mv-dl-login input")).map(function(i){return i.type;}); })()');
@@ -677,6 +683,13 @@ main().catch(function (err) {
       console.error((r.pass ? '  ✓ ' : '  ✗ ') + r.name + '  (' + r.detail + ')');
     }
     console.error('其中失败 ' + bad + ' 项');
+  }
+  /* 失败时同样把页面日志倒出来：超时类失败的证据全在页面里（DBG / console.error）。 */
+  const pl = globalThis.__mvPageLogs || [];
+  if (pl.length) {
+    console.error('--- 页面日志（' + pl.length + ' 条，最多 40）---');
+    /* 打印**最后** 40 条：最早的日志通常是页面首屏的 400 噪声，失败现场在后面。 */
+    for (const l of pl.slice(-40)) console.error('  · ' + String(l).slice(0, 220));
   }
   const traces = globalThis.__mvDebugTrace || [];
   if (traces.length) {
