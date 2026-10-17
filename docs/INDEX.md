@@ -105,6 +105,10 @@
 | [AGENT.md](../AGENT.md) | 项目入口：这是什么、铁律、目录结构、编码约定、已知坑 | **第一次接手必读** |
 | [README.md](../README.md) | 面向使用者：安装、使用、备份、卸载、FAQ | 想用起来 |
 | [INDEX.md](INDEX.md) | 你正在读的这份 | 找不到东西时 |
+| [CONTRIBUTING.md](../CONTRIBUTING.md) | 参与方式、环境、基线命令、6 条硬约束、提交规范 | 想提 PR |
+| [SECURITY.md](../SECURITY.md) | 处理哪些敏感数据、哪些行为**不算**漏洞、私密报告通道 | 发现安全问题 |
+| [CHANGELOG.md](../CHANGELOG.md) | 对外可见的版本变化 | 想知道这版有什么 |
+| [LICENSE](../LICENSE) | MIT | 想二次分发 |
 
 ### 契约类（改了会影响双方）
 

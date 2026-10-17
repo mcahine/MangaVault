@@ -378,7 +378,8 @@ node scripts/tidy.mjs               # 工程卫生检查（默认 dry-run）
 ## 参与
 
 - **提问题 / 提建议**：用 [issue 模板](https://github.com/mcahine/MangaVault/issues/new/choose)。缺陷请给复现步骤与环境，日志在数据目录下的 `mangavault.log` / `desktop.log` / `kernel-console.log`（**贴之前先搜一遍 token**）。
-- **改代码**：先读 [AGENT.md](AGENT.md)（工程铁律）与 [docs/MODULE_CONTRACT.md](docs/MODULE_CONTRACT.md)（模块契约），再跑一遍 `node tests/run-tests.mjs` 建立基线。提 PR 请附真实测试输出。
+- **改代码**：先读 [AGENT.md](AGENT.md)（工程铁律）与 [docs/MODULE_CONTRACT.md](docs/MODULE_CONTRACT.md)（模块契约），再跑一遍 `node tests/run-tests.mjs` 建立基线。提 PR 请附真实测试输出；完整流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+- **安全相关**：漏洞请不要开 public issue，走 [SECURITY.md](SECURITY.md) 里的私密报告通道。
 - **不要提交**：哔咔 token、代理密码、你自己漫画库的绝对路径、任何漫画图片。
 - 提交信息用中文或英文都行，但请说明**根因**而不只是现象。
 
@@ -394,6 +395,7 @@ node src/server.mjs           # 浏览器打开 http://127.0.0.1:8775
 ```
 
 - 许可证：**[MIT](LICENSE)** —— 可自由使用、修改、分发，保留版权声明即可。
+- 版本变化见 [CHANGELOG.md](CHANGELOG.md)。
 - 仓库里**没有** `node_modules`、没有构建缓存；克隆下来就能跑，只有「自己构建 exe」需要系统自带 `csc.exe`。
 - 克隆后建议确认换行配置（仓库带 [.gitattributes](.gitattributes)，Windows 上 `core.autocrlf` 保持 `false` 即可，否则 `启动漫库.bat` 的 GBK 字节会被改写）。
 
