@@ -607,3 +607,65 @@ operable program or batch file.
 | `CHANGELOG.md` | 新增「文档与生态」小节（索引重整 / 仓库模板齐备 / 截图用虚构夹具） |
 | `docs/INDEX.md` | 「三条最常走的路」加「先看看长什么样」 |
 | `docs/screenshots/README.md` | 新增：内容来源说明、6 张文件表、重新生成的关键点 |
+
+### 10.7 第五个真缺陷：桌面自检偶发读不到 `DONE OK`
+
+总验收里第 13 项「桌面 exe 自检」时红时绿：断言本身 16 条全过，但脚本在**独立等待**中拿不到 `DONE OK`（`sawDone=false` → 退出码 1）。
+
+trace 尾部只到 `SNAPSHOT-END`，中间缺 `DONE OK`。读 `desktop/host/Program.cs` 找到两条并发路径：
+
+| # | 根因 | 修法 |
+| --- | --- | --- |
+| 1 | `AppendRaw()` 直接 `File.AppendAllText`，而 `Trace()` 会被 UI 线程 / 看护定时器 / 桥轮询线程同时调用 → 并发写同一文件偶发 `IOException`，又被 `catch {}` 吞掉 = 悄悄丢行。收尾阶段恰好是写入最密的时候 | 新增 `fileLock`，`AppendRaw` 全程串行 |
+| 2 | `Dump()` 里 `KillServer()` 会 `WaitForExit(5000)` / `taskkill.WaitForExit(6000)`，最坏阻塞十几秒；看护线程 3 秒一跳，期间看到后端已退出就打 `SERVER-DEAD-EXIT` 并再调 `Dump("SERVERDEAD")` —— `dumped` 标志已置位所以它自己 return，但**收尾那几行的写入正被它挤占** | `Dump()` 里先停 `bridgeTimer` 再落 `DONE`；`KillServer()` 内部的存活复核抽成 `ServerAliveNow()`，由 `Dump` 在 `KillServer()` **之后**单独落 `SERVER-ALIVE-AFTER-KILL` |
+
+**顺序约束（踩过一次）**：`DONE` 不能提到 `KillServer()` 之前 —— 自检脚本一看到 `DONE OK` 就立刻独立复核「后端 pid 是否真的没了」，提前落 `DONE` 会让那次复核必然读到「还活着」（实测 run3：`trace 声明=false，独立复核 pid 39680 存活=true`）。最终顺序：
+
+```text
+SHUTDOWN OK            ← 收尾开始
+（停 overallTimer / bridgeTimer）
+KillServer()           ← 这里最坏阻塞十几秒，但已经没有别的线程会写
+SERVER-ALIVE-AFTER-KILL False
+DONE OK                ← 收尾完成，此刻后端已确认不在
+SNAPSHOT-BEGIN / SNAP … / SNAPSHOT-END
+```
+
+验证：连跑 **6 次** `node scripts/dev/desktop-selftest.mjs` 全部 16 通过 / 0 失败、退出码 0；trace 收尾顺序逐行核对如上。
+
+## 十一、最终验收
+
+```text
+node tests/run-tests.mjs         → 1462 通过 / 0 失败（15 文件）
+node scripts/dev/verify-all.mjs  → 14 通过 / 0 失败 / 0 跳过 · 325.0s · 退出码 0
+```
+
+| # | 验收项 | 结果 | 摘要 |
+| --- | --- | --- | --- |
+| 1 | 单元+集成测试 | ✓ | 1462 通过 / 0 失败 |
+| 2 | vault 破坏性验收 | ✓ | 28 通过 / 0 失败 |
+| 3 | 浏览器滚动检查 | ✓ | 13/13 |
+| 4 | 桌面宿主忙闲判定 | ✓ | 13/13 |
+| 5 | dist 与源码一致 | ✓ | 137 文件 |
+| 6 | 候选复核删除一致性 | ✓ | 15 通过 / 0 失败 |
+| 7 | 候选复核删除（真浏览器） | ✓ | 10 通过 / 0 失败 |
+| 8 | 指纹索引自检 | ✓ | 1236 / 1236 |
+| 9 | 阅读器翻页方向（真浏览器） | ✓ | 28/28 |
+| 10 | 下载页三页签（真浏览器） | ✓ | 38/38 |
+| 11 | 管理台（真浏览器） | ✓ | 28/28 |
+| 12 | 孤儿清理竞态探针 | ✓ | 误移 0 例 |
+| 13 | 桌面 exe 自检 | ✓ | 16 通过 / 0 失败 |
+| 14 | 桌面启动器验收 | ✓ | 17 通过 / 0 失败 |
+| 15 | 工程卫生（参考） | ✓ | 69/100，高危 0 |
+
+## 十二、推送与远端状态
+
+| 项 | 值 |
+| --- | --- |
+| 提交 | `7c96601` fix: 演示截图驱动的 4 个真缺陷 + 仓库宣传打磨（23 文件，+431 / −258） |
+| 推送 | `a915939..7c96601  main -> main` |
+| CI | run #3 `success`（sha 7c96601），四个 job 全绿：测试 Node 20/22/24 + 构建桌面宿主 |
+| 远端 | public / main / MIT / JavaScript / **280 文件** / 无 dist、无 data；`docs/screenshots/` 6 张 JPEG + 说明已上传 |
+| Release | `v1.0.0 · MangaVault v1.0.0 · 本地漫画中枢`，正文约 3057 字（四件事 / 凭什么不一样 / 快速开始 / 更多界面 / 这一版修了什么 / 文档 / 声明） |
+| 仓库描述 | 本地漫画中枢 · 零第三方运行时依赖 · 多库根索引 / 三种阅读模式 / 哔咔下载（断点续传）/ SHA-256 + 像素指纹查重 + 人工审核 / C# + WebView2 桌面宿主 |
+| homepage | 指向 README 锚点；10 个 topics 已设置 |
+| 分支保护 | `strict=true`，4 个必需检查（测试 Node 20/22/24 + 构建桌面宿主），禁 force-push、禁删除；管理员直推可绕过（提示 Bypassed rule violations） |
