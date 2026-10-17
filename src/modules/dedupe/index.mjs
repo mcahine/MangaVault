@@ -71,6 +71,23 @@ function findUnit(scan, id) {
   return scan.units.find(function (u) { return u.id === id; }) || null;
 }
 
+/*
+  在「完整扫描」和「快速查重」两边一起找单元。
+  为什么必须两边都找：候选复核页的卡片来自 scan-fast.json，而缩略图路由原先只认
+  scan-latest.json —— 用户只跑过快速查重时，候选卡片张张都是「图片读取失败」，
+  整个候选复核就废了（这不是报错，是静默降级，最容易被放过）。
+  两边 id 口径一致；完整扫描优先，因为它带 hits 等更全的字段。
+*/
+async function findUnitAny(paths, id, knownScan) {
+  const scan = knownScan || await readScan(paths);
+  const hit = findUnit(scan, id);
+  if (hit) return hit;
+  let fast = null;
+  try { fast = await readJson(fastFileOf(paths), null); } catch (e) { fast = null; }
+  const list = (fast && Array.isArray(fast.units)) ? fast.units : [];
+  return list.find(function (u) { return u && u.id === id; }) || null;
+}
+
 /** 单元列表用的精简结构（含多根标识）。 */
 function compactUnit(u, decisions) {
   const d = (decisions && decisions[u.id]) || null;
@@ -427,7 +444,8 @@ export async function register(app, ctx) {
     const scan = await readScan(paths);
     if (!scan) c.throwError(404, '还没有扫描结果，请先扫描');
     const id = c.params.id;
-    const rec = findUnit(scan, id);
+    // 同理：快速查重的候选也要能进详情（否则候选卡片的「并排看全图」永远打不开）。
+    const rec = findUnit(scan, id) || await findUnitAny(paths, id, scan);
     if (!rec) c.throwError(404, '单元不存在（可能已被删除或重新扫描）: ' + id);
     const decisions = await readDecisions(paths);
     const hash = await readHash(paths);
@@ -466,9 +484,9 @@ export async function register(app, ctx) {
   // ---------- 缩略图 / 原图 ----------
   app.get('/api/dedupe/thumb', async function (c) {
     const paths = await pathsOf();
-    const scan = await readScan(paths);
     const id = String(c.query('unit', '') || '');
-    const rec = findUnit(scan, id);
+    // 候选复核的卡片来自快速查重（scan-fast.json），只认 scan-latest.json 会让抽样图全部 404。
+    const rec = await findUnitAny(paths, id);
     if (!rec) c.throwError(404, '单元不存在: ' + id);
     const side = c.query('side', 'dup') === 'lib' ? 'lib' : 'dup';
     const name = String(c.query('name', '') || '');

@@ -441,6 +441,35 @@ export default async function (t) {
       const residueOpen = (await api('/api/dedupe/units?size=100&deleted=1')).data;
       t.ok((residueOpen.units || []).some(function (u) { return u.id === residual.id; }), '(g8) 残留单元在 deleted=1 下可见（诊断）');
 
+      // (g10) ★候选复核的抽样图★ 只跑过快速查重（scan-fast.json）时，缩略图路由也必须认得单元。
+      //       用户只跑快速模式时，候选卡片会张张显示「图片读取失败」—— 这不是报错而是静默降级，
+      //       前端看起来就是「查重坏了」，所以必须用断言钉住。
+      const fastUnitDir = path.join(httpScan, '分类A', '快速单元');
+      fakeJpg(path.join(fastUnitDir, '101.jpg'), 'H9');
+      const fastDoc = {
+        generatedAt: new Date().toISOString(), stage: 'fast',
+        units: [{
+          id: '分类A/快速单元', name: '快速单元', dupDir: fastUnitDir,
+          samples: [{ dup: '101.jpg', lib: '', root: '', exact: false, mad: null }],
+          matches: []
+        }]
+      };
+      await fsp.mkdir(httpPaths.root, { recursive: true });
+      await fsp.writeFile(path.join(httpPaths.root, 'scan-fast.json'), JSON.stringify(fastDoc), 'utf8');
+      const fastThumb = await fetch(H + '/api/dedupe/thumb?unit=' + encodeURIComponent('分类A/快速单元') + '&side=dup&name=101.jpg');
+      t.eq(fastThumb.status, 200, '(g10) ★只存在于 scan-fast.json 的单元，缩略图也能取到（200）');
+      const fastBody = await fastThumb.arrayBuffer();
+      // 夹具是极小的假 JPEG（几十字节），所以判据用「与原文件等长」而不是随便一个阈值。
+      const fastSrcSize = (await fsp.stat(path.join(fastUnitDir, '101.jpg'))).size;
+      t.ok(fastBody.byteLength === fastSrcSize, '(g10) 缩略图返回的正是该图的字节（' + fastBody.byteLength + 'B = 原图）');
+      const fastDetail = await fetch(H + '/api/dedupe/unit/' + encodeURIComponent('分类A/快速单元'));
+      t.eq(fastDetail.status, 200, '(g10) 快速单元也能打开详情（并排看全图的入口）');
+      const fastCands = (await api('/api/dedupe/candidates')).data;
+      const fastCand = (fastCands.candidates || []).find(function (x) { return (x.unit && x.unit.id) === '分类A/快速单元'; });
+      t.ok(Boolean(fastCand), '(g10) 该单元出现在候选复核列表里');
+      t.ok(Boolean(fastCand && (fastCand.samples || []).length), '(g10) 候选卡片带出了抽样图地址（不是空数组）');
+      await fsp.rm(path.join(httpPaths.root, 'scan-fast.json'), { force: true });
+
       // (g9) 收尾：runner 是模块级单例，run-tests 又在同一个进程里按文件顺序跑，
       //      不主动中止就会带着后台扫描进入后面的用例（桌面端/集成）造成跨文件串扰。
       const aborted = await api('/api/dedupe/scan/abort', { method: 'POST', body: {} });

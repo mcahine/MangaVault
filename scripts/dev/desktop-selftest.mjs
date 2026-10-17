@@ -11,7 +11,7 @@
 //    1. 删掉旧的 dist/data/host-trace.txt，避免读到上一次的陈旧证据
 //    2. **fire-and-forget 点火** exe（spawn 后立刻 unref，绝不 await / 绝不 spawnSync）
 //    3. 轮询 trace 文件，直到出现 "DONE OK" 或超时（默认 60s）
-//    4. 断言 12 条关键证据（含「SERVER-PID 对应的进程真的没了」的独立复核）
+//    4. 断言 16 条关键证据（含「SERVER-PID 对应的进程真的没了」的独立复核）
 //    5. 打印逐条结果与总结，退出码 0 / 1
 //
 //  ★ 为什么必须 fire-and-forget：

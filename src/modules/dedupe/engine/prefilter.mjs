@@ -107,6 +107,23 @@ export function comicPages(comic) {
   return Number.isFinite(pc) && pc > 0 ? pc : 0;
 }
 
+/**
+ * 库漫画各章节页数（与 comicPages 同口径：优先 count，回落 images.length）。
+ * 为什么单独要这个：正规化后的库是 <漫画>/<序> 第N話/ 形态，查重单元是**单个章节**，
+ * 其页数（6~10）永远对不上一部作品的总页数（36~500），只看总页数会让所有候选被页数信号误杀。
+ */
+export function comicChapterPages(comic) {
+  if (!comic || !Array.isArray(comic.chapters)) return [];
+  const out = [];
+  for (const ch of comic.chapters) {
+    if (!ch) continue;
+    const n = Number(ch.count);
+    if (Number.isFinite(n) && n > 0) { out.push(n); continue; }
+    if (Array.isArray(ch.images)) out.push(ch.images.length);
+  }
+  return out;
+}
+
 /** 查重单元页数：直接数图片文件名。 */
 function unitPages(unit) {
   if (!unit) return 0;
@@ -145,7 +162,9 @@ export function prefilterUnits(units, comics, opts) {
   const list = Array.isArray(units) ? units : [];
   const lib = Array.isArray(comics) ? comics : [];
   // 标题归一化只做一次：库侧 266 条、单元侧 140 条，若对每个组合都归一化会白算几万次。
-  const libNorm = lib.map(function (c) { return { comic: c, norm: normTitle(comicTitle(c)), pages: comicPages(c) }; });
+  const libNorm = lib.map(function (c) {
+    return { comic: c, norm: normTitle(comicTitle(c)), pages: comicPages(c), chPages: comicChapterPages(c) };
+  });
 
   const candidates = [];
   let pairs = 0;
@@ -158,16 +177,32 @@ export function prefilterUnits(units, comics, opts) {
     for (const L of libNorm) {
       const score = diceCoefficient(uNorm, L.norm);
       if (score < titleThreshold) continue;
-      const diff = up - L.pages;
-      if (Math.abs(diff) > slack) continue;
+      // 页数信号要同时认两种形态：
+      //   裸形态  查重单元就是整部作品 -> 与作品总页数比；
+      //   规范形态 查重单元是单个章节   -> 与「最接近的那个章节页数」比（差 1 页也算命中）。
+      // 只比总页数会让正规化后的库永远零候选（单元 6 页 vs 作品 36 页，5% 容差直接挡掉）。
+      let pageDiff = up - L.pages;
+      let reasonPage = '页数';
+      let chDiff = null;
+      if (L.chPages.length) {
+        for (const n of L.chPages) {
+          const d = up - Number(n);
+          if (chDiff === null || Math.abs(d) < Math.abs(chDiff)) chDiff = d;
+        }
+      }
+      const totalOk = Math.abs(pageDiff) <= slack;
+      const chSlack = Math.max(MIN_PAGE_SLACK, Math.ceil(up * pageTolerance));
+      const chOk = chDiff !== null && Math.abs(chDiff) <= chSlack;
+      if (!totalOk && !chOk) continue;
+      if (!totalOk && chOk) { pageDiff = chDiff; reasonPage = '章节页数'; }
       matches.push({
         libId: String((L.comic && L.comic.id) || ''),
         libTitle: comicTitle(L.comic),
         libPages: L.pages,
         titleScore: Math.round(score * 1000) / 1000,
-        pageDiff: diff,
-        pageDiffRatio: up > 0 ? Math.round((Math.abs(diff) / up) * 10000) / 10000 : 0,
-        reasons: ['标题', '页数']
+        pageDiff: pageDiff,
+        pageDiffRatio: up > 0 ? Math.round((Math.abs(pageDiff) / up) * 10000) / 10000 : 0,
+        reasons: ['标题', reasonPage]
       });
     }
     if (!matches.length) continue;

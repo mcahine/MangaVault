@@ -15,7 +15,7 @@
 ## 基线
 
 ```powershell
-node tests/run-tests.mjs        # 应当 1440 通过 / 0 失败
+node tests/run-tests.mjs        # 应当 1462 通过 / 0 失败
 node scripts/tidy.mjs           # 工程卫生（目前 69/100，高危 0）
 ```
 

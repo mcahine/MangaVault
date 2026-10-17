@@ -10,6 +10,7 @@
 | 我想…… | 去哪 |
 | --- | --- |
 | **用起来**（怎么装、怎么用、怎么卸载） | [README.md](../README.md) |
+| **先看看长什么样** | [README.md](../README.md) 的「界面速览」；原图在 [screenshots/](screenshots/) |
 | **改代码**（约定、铁律、模块怎么加） | [AGENT.md](../AGENT.md) → [MODULE_CONTRACT.md](MODULE_CONTRACT.md) |
 | **搞不懂某处为什么这样设计** | [ARCHITECTURE.md](ARCHITECTURE.md) |
 

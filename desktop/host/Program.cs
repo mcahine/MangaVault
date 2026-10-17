@@ -95,6 +95,8 @@ namespace MangaVaultHost
     private static volatile bool bridgeProbeOk;
     private static readonly object dumpLock = new object();
     private static readonly object traceLock = new object();
+    /** 写 trace 文件（AppendRaw）的独占锁：多个线程会同时写同一文件，缺锁会互相踩踏。 */
+    private static readonly object fileLock = new object();
     private static readonly List<string> logLines = new List<string>();
     private static IntPtr jobHandle = IntPtr.Zero;
     private static readonly Stopwatch clock = Stopwatch.StartNew();
@@ -327,11 +329,17 @@ namespace MangaVaultHost
         }
       }
       catch (Exception ex) { Trace("SERVER-KILL-OUTER " + ex.Message); }
+      return ServerAliveNow();
+    }
 
+    /** 复核后端是否真的没了。★ 由调用方在 KillServer() 之后**另行**调用并打证据，
+        不能塞进 KillServer 里打：那样「SERVER-ALIVE-AFTER-KILL」就会出现在
+        「SHUTDOWN <status>」之前，看起来像收尾开始前就已经杀过一遍。 */
+    private static bool ServerAliveNow()
+    {
       bool alive = false;
       try { alive = server != null && !server.HasExited; } catch { }
-      Trace("SERVER-ALIVE-AFTER-KILL " + alive);
-      return !alive;
+      return alive;
     }
 
     /* ============================================================
@@ -921,7 +929,17 @@ namespace MangaVaultHost
       Dump("OK");
     }
 
-    /** 写自检快照并退出；status=OK 时退出码 0，其余为 7 */
+    /** 写自检快照并退出；status=OK 时退出码 0，其余为 7
+     *
+     *  ★ 顺序为什么是这样（曾经把 DONE 写成「偶尔缺失」，踩了两个坑）：
+     *    1) KillServer() 会 WaitForExit(5000) / tk.WaitForExit(6000)，最坏能把收尾拖长十几秒。
+     *       看护线程（bridgeTimer，3 秒一跳）在这期间照样跑，进来看到 server 已退出就打
+     *       「SERVER-DEAD-EXIT」并再调 Dump("SERVERDEAD") —— 要是这一步发生在 KillServer 之前，
+     *       真正的收尾就被抢先，日志里只剩 SERVERDEAD，自检读不到 DONE OK。
+     *       所以必须**先停看护定时器，再无条件落一行 DONE**，最后才去杀后端。
+     *    2) AppendRaw 是 File.AppendAllText，多个线程同时写同一文件会互相踩踏、
+     *       偶发 IOException 被 catch 吞掉 —— 收尾那几行正好是并发最密的时刻。
+     *       所以全部写文件操作都走 fileLock 串行。 */
     private static void Dump(string status)
     {
       lock (dumpLock)
@@ -929,10 +947,15 @@ namespace MangaVaultHost
         if (dumped) return;
         dumped = true;
       }
+      /* ① 先落「收尾开始」，再立刻停看护：此刻起不会再有别的线程进来抢着 Dump。 */
       Trace("SHUTDOWN " + status);
       try { if (overallTimer != null) overallTimer.Stop(); } catch { }
       try { if (bridgeTimer != null) bridgeTimer.Dispose(); } catch { }
+      /* ② 再杀后端，并把复核结果落成证据。
+            ★ DONE 必须排在 KillServer() 之后：自检脚本一看到 DONE OK 就会独立复核
+              「后端 pid 是否真的没了」，把 DONE 提前会让那次复核必然读到「还活着」。 */
       KillServer();
+      Trace("SERVER-ALIVE-AFTER-KILL " + ServerAliveNow());
       Trace("DONE " + status);
       Trace("SNAPSHOT-BEGIN");
       string[] copy;
@@ -959,13 +982,19 @@ namespace MangaVaultHost
 
     private static void AppendRaw(string text)
     {
-      try
+      /* 串行化：Trace 会被 UI 线程、线程池定时器、桥轮询线程同时调用，
+         File.AppendAllText 并发写同一文件会偶发 IOException（被 catch 吞掉 = 悄悄丢行）。
+         收尾阶段恰恰是写入最密的时刻，所以这把锁是「DONE 稳定出现」的前提。 */
+      lock (fileLock)
       {
-        FileInfo fi = new FileInfo(tracePath);
-        if (fi.Exists && fi.Length > TRACE_MAX_BYTES) File.Delete(tracePath);
-        File.AppendAllText(tracePath, text + Environment.NewLine, new UTF8Encoding(false));
+        try
+        {
+          FileInfo fi = new FileInfo(tracePath);
+          if (fi.Exists && fi.Length > TRACE_MAX_BYTES) File.Delete(tracePath);
+          File.AppendAllText(tracePath, text + Environment.NewLine, new UTF8Encoding(false));
+        }
+        catch { }
       }
-      catch { }
     }
 
     private static string Describe(object e)

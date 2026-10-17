@@ -10,7 +10,7 @@ import os from 'node:os';
 import { STAGES, STAGE_WEIGHTS, STAGE_LABEL } from '../src/modules/dedupe/engine/runner.mjs';
 import {
   computeCoverageOf, loadCandidateFingerprints, isCandidateWorth,
-  buildFastSamples, MAX_FAST_CHAPTERS, MAX_FAST_SAMPLES
+  buildFastSamples, MAX_FAST_CHAPTERS, MAX_FAST_SAMPLES, runFastStage
 } from '../src/modules/dedupe/engine/pipeline.mjs';
 import { invOf, grayStats } from '../src/modules/dedupe/engine/match.mjs';
 import { readSet } from '../src/modules/dedupe/engine/fpio.mjs';
@@ -19,6 +19,35 @@ export const name = '快速查重（v7 元数据预筛 + 候选章节比对）';
 
 const GRAY = 1024;
 const LEVEL = 128;
+
+/**
+ * 去掉注释与三类字符串字面量，只留「代码骨架」。
+ * 为什么必须逐字符状态机：用正则一次性替换会把中文与 \w 混排处的末字符吃掉，
+ * 产出满屏假命中（本仓库踩过：每个单词都被截掉末字母，如 accoun / accountLoadin）。
+ */
+function stripForFast(src) {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    const d = src[i + 1];
+    if (c === '/' && d === '/') { while (i < n && src[i] !== '\n') i++; continue; }
+    if (c === '/' && d === '*') { i += 2; while (i < n && !(src[i] === '*' && src[i + 1] === '/')) i++; i += 2; continue; }
+    if (c === '\'' || c === '"' || c === '`') {
+      const q = c; i++;
+      while (i < n) {
+        if (src[i] === '\\') { i += 2; continue; }
+        if (src[i] === q) { i++; break; }
+        i++;
+      }
+      out += ' ';
+      continue;
+    }
+    out += c; i++;
+  }
+  return out;
+}
 
 /** 造一个指纹 .bin：int32 条数 + 每条 { int32 名字长度, UTF8 名字, int32 宽, int32 高, 1024 灰度 }。 */
 function writeBin(file, entries) {
@@ -178,6 +207,69 @@ export default async function (t) {
     t.eq(samples[0].root, 'picacg', '(e6) 抽样图带库根 id（缩略图路由要用）');
     t.eq(buildFastSamples(libMany, fpMany, manyNames, null, manyNames, 8, 4).length, 0, '(e7) 没有最佳章节时返回空数组');
     t.eq(buildFastSamples(libMany, fpMany, manyNames, { rec: rec, cover: covMany }, manyNames, 8, 1).length, 1, '(e8) thumbCount=1 时只给一张');
+    // ---------- (f) 拆文件后的调用链自洽（真实事故：summaryOf 漏 import） ----------
+    // 事故形态：拆 pipeline.mjs -> pipeline-fast.mjs 时 summaryOf 留在原文件，
+    // pipeline-fast 里 汇总: summaryOf(outUnits) 没有对应 import。
+    // 单测从不调用 runFastStage，1440 条断言全绿，真实点「快速查重」直接报
+    // 'summaryOf is not defined'，整轮扫描落盘为 degraded。
+    // 这里用静态扫描钉住：pipeline-fast.mjs 里调用的每个自由函数名，必须有 import 或本地声明。
+    // 不跑真阶段的原因：要造 Python/Pillow + 指纹，代价与收益不成比例；缺陷形态就是「标识符没解析」。
+    t.eq(typeof runFastStage, 'function', '(f1) runFastStage 必须能从 pipeline.mjs 导入（index.mjs 就是这样调的）');
+    const FAST_SRC = path.join(import.meta.dirname, '..', 'src', 'modules', 'dedupe', 'engine', 'pipeline-fast.mjs');
+    const fastRaw = fs.readFileSync(FAST_SRC, 'utf8');
+    const fastBody = stripForFast(fastRaw);
+    const importedNames = new Set();
+    const reImp = /import\s*\{([^}]*)\}\s*from/g;
+    let mi = null;
+    while ((mi = reImp.exec(fastBody))) {
+      for (const raw of mi[1].split(',')) {
+        const nm = raw.trim().split(/\s+as\s+/).pop();
+        if (nm) importedNames.add(nm.trim());
+      }
+    }
+    const localNames = new Set();
+    const reDecl = /(?:^|[\n;{}])\s*(?:export\s+)?(?:async\s+)?(?:function|class)\s+([A-Za-z_$][\w$]*)/g;
+    let md = null;
+    while ((md = reDecl.exec(fastBody))) localNames.add(md[1]);
+    const reAssign = /(?:^|[\n;{}(,])\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g;
+    let ma = null;
+    while ((ma = reAssign.exec(fastBody))) localNames.add(ma[1]);
+    // 白名单两类：①语言关键字 ②内建全局（ECMAScript 标准对象与函数）。
+    // 刻意不把 Node 专有的东西（require / process / __dirname / Buffer）放进来：
+    // 本仓库是纯 ESM，出现它们本身就是缺陷，让断言红出来才是有意义的。
+    const KNOWN_GLOBALS = new Set([
+      'if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'function', 'await', 'new', 'delete', 'void', 'in', 'of', 'do', 'else', 'try',
+      'Object', 'Array', 'String', 'Number', 'Boolean', 'Math', 'JSON', 'Date', 'RegExp', 'Error', 'TypeError', 'RangeError',
+      'Map', 'Set', 'WeakMap', 'WeakSet', 'Promise', 'Symbol', 'BigInt', 'Proxy', 'Reflect',
+      'parseInt', 'parseFloat', 'isNaN', 'isFinite', 'encodeURIComponent', 'decodeURIComponent', 'structuredClone',
+      'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'queueMicrotask',
+      'Uint8Array', 'Uint8ClampedArray', 'Uint16Array', 'Uint32Array', 'Int8Array', 'Int16Array', 'Int32Array',
+      'Float32Array', 'Float64Array', 'ArrayBuffer', 'SharedArrayBuffer', 'DataView', 'TextEncoder', 'TextDecoder', 'URL'
+    ]);
+    // 形参也是合法绑定（report / ctx / paths 都是 runFastStage 的形参）
+    const params = new Set();
+    const reParams = /export\s+async\s+function\s+[A-Za-z_$][\w$]*\s*\(([^)]*)\)/g;
+    let mp = null;
+    while ((mp = reParams.exec(fastBody))) {
+      for (const raw of mp[1].split(',')) {
+        const nm = raw.trim().split(/[=\s]/)[0];
+        if (nm) params.add(nm);
+      }
+    }
+    const calledNames = new Set();
+    const reCall = /(^|[^.\w$])([A-Za-z_$][\w$]*)\s*\(/g;
+    let mc = null;
+    while ((mc = reCall.exec(fastBody))) calledNames.add(mc[2]);
+    const unresolved = [];
+    for (const nm of calledNames) {
+      if (KNOWN_GLOBALS.has(nm)) continue;
+      if (importedNames.has(nm) || localNames.has(nm) || params.has(nm)) continue;
+      unresolved.push(nm);
+    }
+    t.deepEq(unresolved, [], '(f2) pipeline-fast.mjs 调用的本地函数必须都有 import 或声明，未解析的会在运行期静默炸: ' + JSON.stringify(unresolved));
+    t.ok(importedNames.has('summaryOf'), '(f3) summaryOf 必须有 import（漏掉会让整轮快速查重不可用）');
+    t.ok(!/^\s*export\s+function\s+summaryOf/m.test(fastBody), '(f4) summaryOf 不能在本文件重新定义（会导致两份实现漂移）');
+    void 0;
   } finally {
     try { await fsp.rm(root, { recursive: true, force: true }); } catch (e) { /* 清理失败不影响结论 */ }
   }

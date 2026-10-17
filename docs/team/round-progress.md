@@ -549,234 +549,61 @@ operable program or batch file.
 ### 回归防线（两层，都做过敏感度验证）
 
 1. `tests/reader.test.mjs` 新增 5 条静态契约（64 通过 / 0 失败）：**不得再出现 `new IntersectionObserver` / `function observeWebtoon`**；必须有 `currentPageByScroll` / `onStageScroll` / `trackWebtoon`；`ctx.on(stage, 'scroll', onStageScroll)` 必须存在；`queueAround(n);` 必须存在；`if (scrollBound) return;` 必须存在。
-2. `scripts/dev/reader-nav-check.mjs` 从 20 条增到 **24 条**，新增真浏览器段：把视口压到 300px 高（构造出「块高 900 > 2.5×视口 254」的几何，旧观察器在这种几何下必然失效）→ 断言初始只加载队列前几页、滚动后页码跟着走、逐页滚到底整章补齐。**24/24 通过**。
+## 十、宣传打磨（README / 模板 / Release / 仓库描述）
 
-**敏感度验证（这一步不能省）**：用 `Page.addScriptToEvaluateOnNewDocument` 注入脚本把 `EventTarget.prototype.addEventListener` 的 `scroll` 分支掐掉，模拟旧实现的失效路径 —— 实测 `sc:0 / page:"1" / img:4`，**滚动后页码仍然停在 1、图数仍然 4**，证明这条断言确实抓得住这个 bug，不是假绿。
+### 10.1 演示夹具（虚构内容，规避任何真实漫画）
 
-### 为什么之前 20/20 全绿却没抓到
+仓库是公开的，截图里不能出现真实作品，所以造了一套**程序生成的虚构夹具**：
 
-夹具只有 6 页，而用例把 `preload` 设成了 **6** —— 6 页一次性全部进队列，**滚动跟踪根本没参与**。凡是「按需 / 增量 / 阈值」类机制，夹具规模与参数必须刻意制造出「机制生效与不生效会得到不同结果」的边界。
+- 12 部原创标题作品（星海邮差 / 深夜食堂手记 / 雨天便利店 / 机械之心 / 山与雾 / 猫町物语 / 折纸飞行 / 无声电台 / 铁道旅人 / 海风信箱 / 墨色城市 / 白昼梦游），元数据与章节皆虚构；
+- 封面与内页是零依赖 PNG 编码器画出的**抽象分镜占位图**（渐变底 + 2×3 分格 + 高光斑），不临摹任何真实画面；
+- 查重目录放两部署名换名的副本（星海邮差 汉化版 / 猫町物语_扫图）+ 一部新作，用来演示候选复核。
 
-### 本轮另外两处「我自己写错的断言」（不是产品问题）
+扫描实测：comics 12 / chapters 47 / images 345 / bytes 111539660 / scanMs 51。
 
-- 视口 420px 时块高 900px 只有 2.14 倍，断言 `blockH > stageH * 2.5` 差一点没过 → 视口改 300px；
-- 断言「一次性跳到底能补齐整章」不成立 —— `preload=1` 时跳到哪就只补那一页前后各一张，中间页永远不会被访问到（这是队列的正确语义）→ 改为**先归零再逐页滚**（上一条断言已经滚到底，不归零会一步跳到最后）。
+### 10.2 演示夹具跑不出候选 → 三个真缺陷
 
----
+| # | 缺陷 | 根因 | 修法 |
+| --- | --- | --- | --- |
+| 1 | 快速查重报 `summaryOf is not defined` | 拆 `pipeline.mjs` → `pipeline-fast.mjs` 时 `summaryOf` 留在原文件，调用方没 import | 新建 `engine/summary.mjs`，两侧都 import；`pipeline.mjs` 改为 re-export（避免循环 import） |
+| 2 | 正规化库（L2 嵌套）**永远零候选** | `prefilterUnits` 拿「单章页数」比「整部作品总页数」，8 vs 40 远超容差 3 | `prefilter.mjs` 新增 `comicChapterPages()`，判定改为「总页数命中 **或** 最接近章节页数命中」，reasons 区分『页数』/『章节页数』 |
+| 3 | 快速查重「按根」统计恒 0 | 代码读 `comic.rootId`，而 `library-index.json` 只有 `comic.root` | 统一成 `c.rootId || c.root`（`pipeline-fast.mjs` 两处） |
 
-## 阅读器：切换模式 / 适应方式后白屏（用户 2026-10-17 复报，解决「另一半」）
+修复效果：演示库 12 单元 → **11 个候选单元 / 11 个候选对**；真实数据回归（92 单元 × 266 部）89→90 单元、124→125 对，几乎无副作用。
 
-用户原话要点：「修复了一半。切换条漫时单页、双页都没问题，但切到条漫就卡住，非得再刷新一遍才行；反复测试发现只要切换到条漫模式就没办法加载出画面；切换适应宽度 / 适应高度 / 原始尺寸，全部都在切换一次后加载不出画面来。」
+### 10.3 第四个真缺陷：候选复核的抽样图全 404
 
-### 根因（一个真缺陷）
+现象：候选卡片张张显示「图片读取失败」。
+根因：`/api/dedupe/thumb` 只从 `scan-latest.json` 找单元，而候选复核的数据源是 `scan-fast.json` —— 只跑过快速查重的用户，这个页面 100% 废掉。**它是静默降级，不报错**，最容易被放过。
+修法：新增 `findUnitAny(paths, id, knownScan)`，先查完整扫描、再查快速结果；`/api/dedupe/thumb` 与 `/api/dedupe/unit/:id` 都改用它。
 
-| 环节 | 事实 |
+### 10.4 新增防回归断言（都做过灵敏度验证）
+
+| 文件 | 断言数 | 内容 |
+| --- | --- | --- |
+| `tests/prefilter.test.mjs` | 109 → **111** | 第 16 节「章节页数信号」：三种口径 / 单章 8 页对作品 40 页必须命中 / reasons 必须是 `['标题','章节页数']` / 章节全偏离必须否决 / 裸形态仍按总页数 |
+| `tests/dedupe-fast.test.mjs` | 47 → **48** | (f) 节静态扫描 `pipeline-fast.mjs`：**每个被调用的本地函数名都必须有 import 或本地声明**（逐字符状态机去注释与字符串，不能用正则） |
+| `tests/dedupe.test.mjs` | 136 → **141** | (g10) 只存在于 `scan-fast.json` 的单元，缩略图必须 200 且字节等于原图、详情必须 200、候选列表必须带抽样图地址 |
+
+灵敏度验证：临时撤掉修复 → `dedupe.test.mjs` 139/2 失败（(g10) 两条红）；临时删掉 `summaryOf` 的 import → `dedupe-fast` 46/2 失败。断言确实咬得住。
+
+### 10.5 截图（6 张，全部虚构内容）
+
+`docs/screenshots/`：library / reader / dedupe / vault / download / settings，各 0.19–0.68 MB JPEG。
+
+做法：无头 Edge + CDP，`--remote-debugging-port=0` 读 `DevToolsActivePort`，`Emulation.setDeviceMetricsOverride` 1440×900 @2x → 2880×1800，`captureScreenshot` 用 jpeg quality 92。
+
+三个坑：
+1. 阅读器工具栏/翻页条 2.8 秒自动隐藏 → 截图前必须 `Input.dispatchMouseEvent` 移动鼠标让它显形（否则只有满屏图，没有任何 UI）；
+2. 查重台默认是空态 → 必须先点「候选复核」（快速查重跑过才有内容）；
+3. 首版设置页里显示的是**真实 token 预览**（`eyJhbGciOiJ...`）→ 演示配置改成 `demo-token-not-a-real-one` 重拍。
+
+### 10.6 仓库对外打磨
+
+| 文件 | 改动 |
 | --- | --- |
-| 重建 | `render()` 每次切模式（`cycleMode`）或切适应方式（`cycleFit`）都 `stage.textContent = ''` 重建 DOM |
-| 保留 | `preloadDone` 是**跨渲染保留**的集合，语义是「这张图请求过了」（单页/双页也预取过同页码） |
-| 冲突 | 新占位块建好后 `startLoad(i)` 里 `if (preloadDone.has(i) \|\| preloadBusy.has(i)) return;` 直接返回 |
-| 结果 | 永远等不到 `swapIn(i)` → 条漫全是灰底占位块；**只有整页刷新**（`preloadDone` 随模块重新初始化）才恢复 |
-
-复现（探针 `scripts/dev/tmp-rw3.mjs`，已删）：`ph:42 img:0 ready:0`，切适应方式后仍 `img:0`；图片响应 33 条、无异常无报错 —— 占位块建了，真图一张都没有。
-
-### 修法（`public/modules/reader.js`）
-
-1. `render()` 的 webtoon 分支：循环里先 `if (S.pages[i]) S.pages[i].shown = false;`（占位块是本次新建的，上次的回填标记必须作废）→ `wrap.appendChild(holderNode(i))`；`trackWebtoon();` 之后加 `fillLoaded();` 再 `preload();`。
-2. 新增 `function fillLoaded()`（插在 `startLoad` 之前）：遍历页面，对「已请求（`preloadDone.has(i)`）且已解码（`p.img.complete && p.img.naturalWidth > 0`）」且当前没有 DOM 的页调 `swapIn(i)`。
-
-修复后实测：切到条漫 `ph:42 img:6 ready:6`；再切适应方式仍 `img:6 ready:6`；图片响应 39 条、无异常。
-
-### 回归防线
-
-| 层 | 内容 | 结果 |
-| --- | --- | --- |
-| `tests/reader.test.mjs` | 新增 3 条静态契约：必须有 `function fillLoaded` + 调用点；重建占位块必须作废 `shown`；`fillLoaded` 必须同时判 `p.shown` 与 `p.img.complete` | 64 → **67 通过 / 0 失败** |
-| `scripts/dev/reader-nav-check.mjs` | 24 → **28 条**：单页前置 → 连点两次模式按钮切到条漫 → 断言立刻有真图且已解码 ≥1；再点一次适应方式 → 断言真图与已解码仍 ≥1 | **28/28 通过** |
-
-**敏感度验证**：把 `fillLoaded();` 调用注释掉重跑 → `结果: 26/28 通过 · 2 失败`，**恰好只有新加的两条变红**（`真图=0 已解码=0`），其余 26 条照常通过；随后用备份恢复并 `node --check` 通过。
-
-### 为什么 24 条全绿却漏掉了整个白屏
-
-全部断言都建立在「一进页面」的初始状态上。**凡是有模式 / 视图切换的功能，验收必须覆盖「进入 → 切换 N 次 → 每次切换后关键内容仍在」这条序列**，而不是只验首次进入。
-
-## 项目卫生整理（用户 2026-10-17，m05177 / m05181）
-
-用户原话（m05177）：「来整理下项目，现在需要保持项目的卫生干净」，（m05181）「从根目录开始弄起」。
-
-### 一、先盘点再动手（用户数据不可逆，仓库不是 git 仓库）
-
-**`Test-Path .git` = False** —— 本项目不是 git 仓库，删除没有版本历史可回滚，所以每一步都必须先备份。
-
-| 项 | 体积 | 性质 | 处置 |
-| --- | --- | --- | --- |
-| 仓库 `data/` | **81.74MB / 573 文件 / 225 目录** | **活污染源**（每次跑总验收都重新生成） | 删内容、留 `.gitkeep` |
-| 仓库根 `config.json` | 1.7KB | 过期误导（`legacyConfigFile()` 零调用点，真 legacy 读的是**上级**目录那份） | 删 |
-| `dist/data/` | 2.8KB / 5 文件 | exe 自检快照，构建时会重新生成 | 删（构建后不存在） |
-| `docs/team/*.png` × 6 | 2.87MB | 历史手工验收截图，全仓库零引用 | 删 |
-
-**备份**：`C:\Users\D-001\Desktop\黄漫\_archive\hygiene-20261017-hygiene`（28 文件 / 6.48MB）= `repo-data/`（21）+ `repo-root-config.json` + `docs-team-png/`（6）。
-
-**必须保留、不能碰的**：
-- `data/.gitkeep` —— `scripts/tidy.mjs` 的 checkEmptyDirs 只在「只含 .gitkeep」时判为合法空目录；也是 `MV_PORTABLE=1` 便携模式的数据目录。
-- **上级** `C:\Users\D-001\Desktop\黄漫\config.json` —— 被 `src/core/config.mjs:133 readLegacyConfig()` 真实读取，`loadConfig()` 有意借用它的 token / downloadDir / dirFmt。
-- `desktop/refs/` 三个 WebView2 DLL —— `scripts/build-desktop.mjs` 编译期必需。
-- `docs/` 顶层 9 个 md 与 `docs/modules/` —— 被 AGENT.md / README.md / INDEX.md 引用。
-
-### 二、真正的根因：`process.cwd()` 写盘（不只是删存量）
-
-`scripts/dev/vault-acceptance.mjs` 结尾原来写 `fsp.writeFile(path.join(process.cwd(), 'data', 'vault-acceptance.log'), ...)`。
-
-而 `scripts/dev/verify-all.mjs` 的 `spawnPiped` / `spawnFileRedirect` **一律以仓库根为 cwd** 拉起子脚本 —— 于是每跑一次总验收，就在仓库里凭空造一个 `data/`。
-
-**修法**：改为动态 import 数据目录的权威来源 ——
-
-    const { dataPath } = await import('../../src/core/config.mjs');
-    const logFile = dataPath('vault-acceptance.log');
-
-**实测验证**：清理后重跑 `node scripts/dev/vault-acceptance.mjs` → **通过 28 / 失败 0**，仓库 `data/` 只剩 `.gitkeep`，日志落到 `%LOCALAPPDATA%\MangaVault\vault-acceptance.log`（1863B）。
-
-### 三、工具自身的假阳性（修扫描器，不是改代码）
-
-`scripts/tidy.mjs` 的 `stripComments(text)`(:109) 靠 `let inBlock = false` **跨行**跟踪块注释状态；而第 264 行写成 `stripQuoted(stripComments(line))` —— **逐行**调用使每行的 `inBlock` 都从 false 重新开始，多行块注释内部的字符于是被当作真代码。这就是 `src/modules/download/api.mjs:69` 那条「模板字符串」误报的成因（该行位于 60-75 行的块注释内）。
-
-修法：先对**整个文件**剥离一次得到行数组 `stripComments(text).split(\n)`，循环里再 `stripQuoted(codeLines[i] || '')`。实测模板字符串 1 条 → **0 条**。
-
-### 四、业务代码的 3 处真问题
-
-| 位置 | 问题 | 修法 |
-| --- | --- | --- |
-| `src/server.mjs:47-48` | 两处 `console.log` 调试残留（此处 logger 尚未创建） | 改用 `process.stdout.write`，与 `src/core/log.mjs` 同一套底层写法，语义不变 |
-| `scripts/dev/dedupe-cand-delete-e2e.mjs:12` | `path.join(process.env.LOCALAPPDATA, 'MangaVault')` 无兜底 | `const LOCAL = process.env.LOCALAPPDATA || os.homedir();` |
-| `tests/vault.test.mjs` + `scripts/dev/vault-orphan-race-check.mjs` 的 `CHILD_SRC` | `path.join(process.env.MV_DATA_DIR, ...)` 无兜底 | `const dataDirEnv = process.env.MV_DATA_DIR || os.tmpdir();` |
-
-**为什么必须兜底**：`path.join(undefined, 'MangaVault')` **不报错**，返回的是相对路径字符串 `MangaVault` —— 随后任何 `mkdir` / `rm` 都作用到 cwd（即仓库根）下的同名目录。
-
-### 五、判定「不修」的 12 条 low 路径安全（扫描器窗口局限）
-
-tidy 的规则是「删除类 API 的目标为非字面量变量，且**前 5 行**窗口内出现 `isAbsolute|safeJoin|insideRoot|startsWith|ownerRootOf` 才算有守卫」。实测这 12 条**全部已有真实守卫，只是守卫在 5 行窗口之外**：
-
-- `src/modules/vault/ops/undo.mjs:25` 的 `fsp.rm(fromAbs)` —— 守卫 `const abs = safeJoin(root.path, it.dir)`(:150) 与 `if (!(await exists(abs)))`(:151) 在更上方；
-- `src/modules/download/ledger.mjs:343` 的 `ledgerPath(taskId)`(:84) —— 内部走 `sanitizeName`，穿越已杜绝；`keyOf`(:135) 同源；
-- 其余：`ops/backup.mjs:34`（dir 来自 `backupDir()`、d 来自 readdir 过滤）、`vault/audit.mjs:84`、`download/engine.mjs:153`(`rmWithRetry`) 与 `:985`、`desktop/app.mjs:91`、`scripts/build-desktop.mjs:172`、`scripts/normalize-dir.mjs:212`、`scripts/dev/download-tabs-check.mjs:648`、`scripts/dev/reader-nav-check.mjs:376`。
-
-**结论**：改代码去迎合扫描器只会增加伪守卫，判定为不修，并把结论写进文档避免重复审计。
-
-### 六、结果
-
-| 指标 | 整理前 | 整理后 |
-| --- | --- | --- |
-| 工程卫生分（`node scripts/tidy.mjs`） | 64/100 C | **69/100 C** |
-| 模板字符串误报 | 1 | **0** |
-| `console.log` | 2 | **0** |
-| 路径安全 mid | 5 | **0** |
-| 仓库 `data/` | 81.74MB / 573 文件 | **1 文件（.gitkeep）** |
-| `docs/team` 截图 | 6 张 / 2.87MB | **0** |
-| 测试 | — | **1428 通过 / 0 失败（15 文件）** |
-
-剩余的 15 分封顶项是 `单文件过大`（28 条）与 `路径安全 low`（12 条，见上），两项都是**结构性**的，不属于本轮「清理垃圾」的范围。
-
-
----
-
-## 收尾：大文件拆分 + git 上传准备
-
-> 用户原话（m05471）：「对于大文件进行拆除，然后准备在 @MangaVault/ 做好git，我要准备上传这个项目了。文档工作做好了来 总之就是给项目做好收尾」。
-
-### 一、上传前密钥扫描（通过，可安全上传）
-
-扫描 181 个源文件（排除 `dist/`），5 类高危模式：
-
-| 模式 | 命中 | 结论 |
-| --- | --- | --- |
-| JWT 头（`eyJhbGciOiJIUzI1NiIs` 开头的三段点分串） | **0** | 无 token 泄露 |
-| token 字段赋值 | **0** | — |
-| password / passwd | **0** | — |
-| `-----BEGIN` 私钥头 | **0** | — |
-| 长 base64 串 | 2 处，**均无害** | `docs/modules/download.md:105` 是文档示例；`scripts/dev/reader-nav-check.mjs:55` 的 `JPEG_B64` 是 1x1 JPEG 夹具 |
-
-### 二、git 初始化与基线
-
-- `git version 2.47.1.windows.2`；`git init -b main`；身份 `mcahine <2947301431@qq.com>`。
-- 设 `git config core.quotepath false`（否则 `git diff --name-only` 对中文文件名返回 bash 八进制转义串，PowerShell 解析不了）与 `core.autocrlf false`。
-- **重写 `.gitignore`**（57 → 63 行，9 段）。关键修正：原来是 `data/`，会连 `data/.gitkeep` 一起忽略，改为 `data/*` + `!data/.gitkeep`；新增 `__pycache__/`、`*.pyc`、`scripts/dev/tmp-*`、`.env`、`*.pem`、`*.key`。
-- 清理：删 `scripts/dev/tmp-tidy.json` 与 `src/modules/dedupe/engine/python/__pycache__/`。
-- 基线 commit **`313213d`「chore: 收尾基线（拆分前快照）」192 文件**，暂存总量 3346.3KB。
-- **`desktop/refs/` 三个 WebView2 DLL 保留进仓库**：`scripts/build-desktop.mjs:157-164` 编译期硬依赖，保留 = 克隆即可构建。因此 `.gitignore` **不能**写裸 `*.dll`（已补注释说明）。
-
-### 三、9 个大文件拆分（全部完成，1440/0 全绿）
-
-| 原文件 | 拆分前 | 拆分后 | 拆出的新文件 |
-| --- | --- | --- | --- |
-| `src/modules/download/index.mjs` | 1506 | **445** | 9 个路由文件：`routes-account` 156 / `routes-leaderboard` 111 / `routes-status` 141 / `routes-search` 145 / `routes-favorites` 111 / `routes-update` 113 / `routes-tasks` 193 / `routes-export` 67 / `routes-files` 200 |
-| `src/modules/download/engine.mjs` | 1309 | **508** | `engine-util.mjs` 419（工具层）/ `engine-run.mjs` 431（`runTask` + `downloadChapter`） |
-| `src/modules/dedupe/engine/pipeline.mjs` | 908 | **304** | `pipeline-fast.mjs` 621（全部快速查重实现） |
-| `src/modules/dedupe/index.mjs` | 867 | **675** | `views.mjs` 148（11 个纯视图辅助）/ `delete-apply.mjs` 84（`makeApplyDeleteToScan` 工厂） |
-| `src/modules/dedupe/engine/match.mjs` | 775 | **545** | `pixel-search.mjs`（z-MAD 检索层） |
-| `public/app.js` | 822 | **472** | `ui.mjs` 221（DOM 组件层）/ `grid.mjs` 139（虚拟网格） |
-| `public/modules/vault.js` | 1438 | **177** | `vault-kit.mjs` 175 + 5 个页签文件 `vault-tabs-tags` 180 / `-meta` 263 / `-move` 230 / `-audit` 209 / `-misc` 305 |
-| `public/modules/download.js` | 1340 | **297** | `download-share.mjs` 291 + 5 个面板 `download-panel-search` / `-favorites` / `-rank` / `-account` / `-tasks` |
-| `public/modules/dedupe.js` | 938 | **约 300** | `dedupe-parts` / `dedupe-cand` / `dedupe-data` / `dedupe-decide` / `dedupe-dialogs` / `dedupe-list` / `dedupe-scan`（7 个） |
-
-拆分后规模：源文件 165 个 / 38982 行；**超 1000 行的只剩 `tests/download.test.mjs`（1284）**，`src` + `public` 里最大的业务文件是 `src/modules/dedupe/index.mjs`（675）。
-
-**统一拆法（风险最低）**：把巨型闭包里的分节整体搬进新文件，新文件导出工厂 `makeXxx(ctx, state, deps)`，函数体**逐字节不变、连缩进都不动**（原 `mount` 内就是 2 空格基准）。这样不需要重写任何逻辑，风险只剩「解构名单是否完整」。
-
-### 四、拆分踩的坑（已写进 AGENT.md 第 11 节）
-
-1. **漏 import 是唯一硬风险**：`engine.mjs` 拆出后漏 `extOfFormat`（`engine.mjs:64 return extOfFormat(...)`）→ 4 条下载断言红；`vault-parts` 的 TDZ 顺序错 → `Cannot access 'refresh' before initialization`。`node --check` 只查语法，查不出漏解构（那是运行期 ReferenceError），**必须真跑测试**。
-2. **不能用累计偏移量切片**：`dedupe/index.mjs` 整体偏 7 行、`routes-files.mjs` 多切了收尾 `}` → `SyntaxError`。可靠流程是 `git show <基线>:<path>` 取原文 + 逐行 dump 候选边界（起始行/结束行/上一行结尾/下一行开头）核对后再切。
-3. **块结束探测不能按行重置括号深度**：`const rootCard = el(...)` 这类单行块里 `{` 与 `}` 同现，深度归零后又没有 `;` 结尾，会一路吞到下一个块。必须**跨行累计全文件括号深度**，`depth === 0 && 行以分号结尾` 才收。
-4. **`run_code` 的引号嵌套**：单引号字符串里写中文含单引号会 `Expected ',', got 'string literal'`；长文档一律用双引号数组 + `.join(NL)`。
-
-### 五、文档收尾
-
-| 动作 | 结果 |
-| --- | --- |
-| 新建 `docs/modules/library.md` | 188 行：接口全表、索引结构、扫描规则、`inFlight` 修复、6 条已知坑 |
-| 新建 `docs/modules/reader.md` | 163 行：接口全表、`DEFAULTS` 8 键、尺寸预取、预加载调度、翻页条、三个白屏缺陷、快捷键 |
-| `docs/INDEX.md` | 8 处「尚未产出」死标注全部改成真实链接；新增 library / reader / v7-plan；**82 条相对链接 0 断链**（脚本实测） |
-| `README.md` | ①版本 v3 → v1.0.0；②实测规模改成真实 `stats`（360 部 / 1384 话 / 74693 张 / 31.4 GB / 6.4 秒）；③删掉不存在的 `打开漫库.bat`，补 `创建桌面快捷方式.ps1` 与「bat 必须 GBK 编码」的告警；④token 的「本机已失效」改中性描述；⑤排行榜从「尚未提供」移到「已有」；⑥进度指向 → `round-progress.md` |
-| `docs/ARCHITECTURE.md` | 2 处指向 v3-progress 的过时表述改为 round-progress，并去掉「仍待办」 |
-| 新增 `LICENSE` | MIT，1080 字节 |
-| `package.json` | 补 `license` / `author` / `keywords` / 4 个脚本（`audit` `tidy` `build:desktop` `verify`） |
-| 全仓 md 链接体检 | 39 个 md / 108 条相对链接 → 修掉唯一断链（`docs/modules/vault.md` 里指向仓库 `data/` 的失效链接，改成数据目录说明） |
-
-### 六、验收
-
-| 项 | 命令 | 结果 |
-| --- | --- | --- |
-| 全量测试 | `node tests/run-tests.mjs` | **1440 通过 / 0 失败（15 文件）** |
-| dist 重建 + 一致性 | `node scripts/build-desktop.mjs --clean --out=dist` + `dist-consistency.mjs` | app 136 文件，**与源码一致** |
-| md 链接完整性 | 自写脚本 | 39 md / 108 链接 / **0 断链** |
-| 工程卫生 | `node scripts/tidy.mjs` | **69/100（C）**，高危 0 |
-### 七、拆分解构回归（真缺陷，已修并加防回归测试）
-
-拆分把 4 个巨型闭包切成 30+ 个新文件，共享状态靠文件顶部 `const { a, b } = s;` 提供。这套做法逻辑零风险，**唯一风险就是解构名单不完整**，而且它只在运行期炸（`node --check` 查不出）。本轮实际抓到 5 处：
-
-| 文件 | 漏掉的绑定 | 谁在用 | 后果 |
-| --- | --- | --- | --- |
-| `src/modules/download/routes-account.mjs` | `ctx` | `ctx.saveConfig` 在 :30 / :55 / :140 | 登录存 token、退出清 token 全失败 |
-| `src/modules/download/routes-files.mjs` | `ctx`、`root` | `ctx.saveConfig` 在 :154 / :166 / :191；`root()` 在 :82 / :109 / :114 | 保存导出目录失败；打开目录越界拒绝 |
-| `src/modules/download/routes-status.mjs` | `ctx` | `ctx.saveConfig` 在 :134 | **保存代理配置失败**（用户此前报的「代理模式配置无法保存」同一条链路） |
-| `public/modules/download.js` | `updateTabBadge` | SSE `state` 分支 | 下载任务角标不刷新 |
-| `public/modules/download-panel-tasks.mjs` | `taskChip`（应由 `deps.chip` 传入） | `updateTabBadge()` 里 | 同上，且抛 `ReferenceError` |
-
-共同特征：**都只在失败/次要分支里被用到**，主流程（登录成功、搜索、下载）一条都不碰 → 当时单元测试 1428 条全绿、真浏览器下载页签 37/38，只红最后那句「整个流程没有 JS 报错」。
-
-**防回归**：`tests/download-routes.test.mjs` 新增 `runSplitContract(t)`（99 通过 / 0 失败）。做法是从 `index.mjs` 的 `const routeCtx = {...}` 正则取出共享绑定名单（31 个），对每个 `routes-*.mjs` 去注释去字符串后，检查「以 `KEY.` / `KEY(` 形式被使用的键」是否都在 `const {...} = s;` 里；工厂形参（`app`、`s`）从 `export function registerRoutes(app, s)` 里自动加白名单，否则会误报 9 条。
-
-### 八、另一处真缺陷：台账清理与 done 状态存在竞态
-
-`tests/download.test.mjs` 的「任务完成后清理对应台账（避免 data/ 膨胀）」在 verify-all 里偶发红（`实际=true 期望=false`），单独跑 3 次全绿。根因不是测试抖动，是**代码里的顺序问题**：`src/modules/download/engine-run.mjs` 原来先 `patch(task, { state: 'done' })` 再 `await removeLedger(task.id)`，于是「看到 done 的观察者断言台账已清」存在一个窗口，机器忙（verify-all 并行跑 15 个脚本）时窗口被撑开。修法：**先删台账、再置 done**，并在注释里写明理由。
-
-### 九、最终验收（本轮实跑）
-
-| 项 | 命令 | 结果 |
-| --- | --- | --- |
-| 全量测试 | `node tests/run-tests.mjs` | **1440 通过 / 0 失败（15 文件）** |
-| 一键验收 | `node scripts/dev/verify-all.mjs` | **14 通过 / 0 失败 / 0 跳过，300.8s，退出码 0** |
-| dist 重建 + 一致性 | `node scripts/build-desktop.mjs --clean --out=dist` + `dist-consistency.mjs` | app 136 文件，**与源码一致** |
-| 工程卫生 | `node scripts/tidy.mjs` | **69/100（C）**，高危 0 |
-
-分项：单元+集成 1440/0、vault 28/0、滚动 13/13、宿主忙闲 13/13、dist 136 文件、候选删除 15/0、候选删除真浏览器 10/0、指纹 1236/1236、阅读器 28/28、下载页签 38/38、管理台 28/28、孤儿误移 0 例、exe 自检 16/0、启动器 17/0。
-
+| `README.md` | 顶部主视觉截图 + 说明免责；新增「为什么是这个而不是别的」5 条差异点；「界面速览」插 6 张图文对照；断言基线 1440 → 1462 |
+| `.github/pull_request_template.md` | 重写：加「怎么复现 / 怎么验证」、硬约束与测试构建两组清单、截图要求、判断依据段 |
+| `CHANGELOG.md` | 新增「文档与生态」小节（索引重整 / 仓库模板齐备 / 截图用虚构夹具） |
+| `docs/INDEX.md` | 「三条最常走的路」加「先看看长什么样」 |
+| `docs/screenshots/README.md` | 新增：内容来源说明、6 张文件表、重新生成的关键点 |

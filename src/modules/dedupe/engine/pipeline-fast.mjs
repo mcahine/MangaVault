@@ -11,6 +11,7 @@ import { runPixelStage } from './pixel-search.mjs';
 import { grayStats, zMadOf } from './match.mjs';
 import { readSet, readIndex, coarseOf, FP_GRAY_BYTES } from './fpio.mjs';
 import { prefilterUnits } from './prefilter.mjs';
+import { summaryOf } from './summary.mjs';
 import { readLibraryIndex } from '../../../core/library-index.mjs';
 import { atomicWriteJson } from '../../../core/util.mjs';
 export async function runFastStage(paths, report, ctx) {
@@ -96,7 +97,7 @@ export async function runFastStage(paths, report, ctx) {
         let rec = chapterByKey.get(key);
         if (!rec) {
           const own = ownerOf(paths.libRoots, sdir);
-          const fallbackRoot = rootById.get(String(comic.rootId || ''));
+          const fallbackRoot = rootById.get(String(comic.rootId || comic.root || ''));
           rec = {
             key: key, dir: sdir, count: count,
             comic: comic.title || comic.dir || '', title: (ch && ch.title) || (ch && ch.dir) || '',
@@ -316,7 +317,9 @@ export async function runFastStage(paths, report, ctx) {
       漫画数: idx.comics.length,
       索引来源: 'library-index',
       按根: paths.libRoots.map(function (r) {
-        return { id: r.id, name: r.name, path: r.path, comics: idx.comics.filter(function (c) { return String(c.rootId || '') === r.id; }).length };
+        // 共享索引里作品只有 comic.root（根 id），rootId 是别的入口才有的字段；二者都要认，
+        // 否则「按根」统计永远是 0（曾长期显示 0 部，看起来像是索引为空）。
+        return { id: r.id, name: r.name, path: r.path, comics: idx.comics.filter(function (c) { return String(c.rootId || c.root || '') === r.id; }).length };
       })
     },
     查重: {

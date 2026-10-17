@@ -12,6 +12,11 @@
 
 ---
 
+![漫画库：多库根索引、网格浏览、标签筛选](docs/screenshots/library.jpg)
+
+> 截图中的作品名、封面与内页全部是**程序生成的虚构夹具**（抽象分镜占位图），不含任何真实漫画内容。
+> 更多界面见下方 [界面速览](#界面速览)。
+
 ## 这是什么
 
 一个**本地的**漫画中枢。它不提供、不托管、不分发任何漫画内容 —— 你把自己的漫画目录挂载成「库根」，它负责：
@@ -24,6 +29,16 @@
 | **查重** | SHA-256 字节查重 + 像素指纹全库比对 + 人工审核 + 安全删除/还原 |
 
 **它只认格式，不认来源。** 只要磁盘上的目录符合 [docs/LIBRARY_FORMAT.md](docs/LIBRARY_FORMAT.md)，加进配置就能被完整管理 —— 新增一个漫画来源 = 新增一条配置，不改一行代码。
+
+### 为什么是这个而不是别的
+
+| 差异点 | 具体含义 |
+| --- | --- |
+| **零第三方运行时依赖** | 只有 Node 标准库 + 相对路径 import。没有 `node_modules`、没有打包器、没有构建步骤（`git clone` 后直接 `node src/server.mjs` 就能跑）。十年后只要 Node 还在，它就还能跑。 |
+| **数据与代码严格分离** | 库根只在你的磁盘上被**读取**；程序数据全在独立的数据目录（`%LOCALAPPDATA%\MangaVault\` 或 `dist\data\`）。升级/替换程序不碰你的漫画，也不碰配置。 |
+| **破坏性操作一律先算账** | 整理、搬迁、查重删除全部 dry-run 优先：先出计划 → 你确认 → 可撤销。查重**永不自动删除**，只给人眼候选。 |
+| **离线优先** | 除「下载」需要联网外，其余全部本地完成；服务只监听 `127.0.0.1`，不对局域网/公网开放。 |
+| **只做本地文件管理** | 不提供、不托管、不分发内容，不内置任何绕过能力。你放什么由你决定。 |
 
 ### 当前实测规模
 
@@ -110,7 +125,7 @@ dist\
 node scripts/dev/desktop-selftest.mjs
 ```
 
-它让 exe 用 `--selftest` 自己跑一遍并退出，然后读它写下的 `dist\data\host-trace.txt` 断言 12 条证据
+它让 exe 用 `--selftest` 自己跑一遍并退出，然后读它写下的 `dist\data\host-trace.txt` 断言 16 条证据
 （后端被拉起、`/api/ping` 通过、WebView2 环境就绪、窗口显示、页面真实渲染、关闭后无孤儿 node 等）。
 
 | 依赖 | 说明 |
@@ -172,6 +187,30 @@ node src/server.mjs          # 启动本地内核，控制台会打印真实地�
 | **查重** | 扫描重复内容、人工审核、安全删除/还原 |
 | **设置** | 库根、端口、代理、下载并发与格式、库体检 |
 | **关于** | 版本、路径、模块状态、快捷键 |
+
+**漫画库** —— 多库根合并索引，网格 / 列表双视图，标签与元数据筛选，一键继续阅读：
+
+![漫画库](docs/screenshots/library.jpg)
+
+**阅读器** —— 单页 / 双页 / 条漫三模式，预加载与等高占位（长条漫不抖），翻页条可锁定：
+
+![阅读器](docs/screenshots/reader.jpg)
+
+**查重台 · 候选复核** —— 先用标题 + 页数在秒级筛出候选，再由人眼并排看图判定；系统绝不自动删除：
+
+![查重台候选复核](docs/screenshots/dedupe.jpg)
+
+**管理台** —— 标签墙、批量元数据、跨库搬迁、孤儿清理、审计撤销、校验修复、回收站：
+
+![管理台](docs/screenshots/vault.jpg)
+
+**下载中心** —— 搜索 / 收藏夹 / 排行榜 / 任务队列，断点续传（已存在的页自动跳过）：
+
+![下载中心](docs/screenshots/download.jpg)
+
+**设置** —— 库根、哔咔账号与代理、查重阈值，全部可视化配置并写回 `config.json`：
+
+![设置](docs/screenshots/settings.jpg)
 
 ### 快捷键
 
@@ -360,7 +399,7 @@ node src/server.mjs                 # 启动内核（开发模式）
 node tests/run-tests.mjs            # 全量测试
 node tests/run-tests.mjs vault      # 只跑名字含 vault 的用例
 node scripts/build-desktop.mjs      # 构建桌面 exe → dist\
-node scripts/dev/desktop-selftest.mjs  # 让 exe 自检并断言 trace（12 条证据）
+node scripts/dev/desktop-selftest.mjs  # 让 exe 自检并断言 trace（16 条证据）
 node scripts/dev/ui-scroll-check.mjs   # 真浏览器验证列表滚动
 node scripts/audit.mjs              # 静态审计 → docs/AUDIT.md
 node scripts/tidy.mjs               # 工程卫生检查（默认 dry-run）
@@ -390,7 +429,7 @@ node scripts/tidy.mjs               # 工程卫生检查（默认 dry-run）
 ```powershell
 git clone https://github.com/mcahine/MangaVault.git
 cd MangaVault
-node tests/run-tests.mjs      # 1440 条断言，全离线，不碰真实数据
+node tests/run-tests.mjs      # 1462 条断言，全离线，不碰真实数据
 node src/server.mjs           # 浏览器打开 http://127.0.0.1:8775
 ```
 

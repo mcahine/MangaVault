@@ -2,7 +2,7 @@
 // 关键：用**真实**的 5 组肉眼确认重复作品标题做断言，而不是编造的字符串。
 import {
   DEFAULT_TITLE_THRESHOLD, DEFAULT_PAGE_TOLERANCE, DEFAULT_MAX_CANDIDATES,
-  normTitle, diceCoefficient, comicPages, prefilterUnits, comicTitleOfUnit
+  normTitle, diceCoefficient, comicPages, comicChapterPages, prefilterUnits, comicTitleOfUnit
 } from '../src/modules/dedupe/engine/prefilter.mjs';
 
 export const name = '查重预筛（快速模式）';
@@ -224,4 +224,37 @@ export default async function (t) {
     '正规化 id 的 ごちそうさま 必须命中库侧 L3');
   // 回归：带章节段与不带章节段算出来的标题分必须完全相同
   t.eq(comicTitleOfUnit(P4 + '/1 第1話'), P4, 'id 切段后与裸标题一致');
+  // ---------- 16. 章节页数信号：正规化库（<漫画>/<序> 第N話/）下查重单元是**单章节** ----------
+  // 背景（真实事故）：库被正规化成 L2 嵌套形态后，查重单元 id 与目录都是「<漫画>/1 第1話」，
+  // unitPages 只有该章 6~10 页，而库侧 comicPages 是整部作品 36~500 页。
+  // 只拿「单元页数 vs 作品总页数」比，5% 容差必然全灭 —— 实测 95 个单元 0 候选、
+  // 演示库 12 个单元 0 候选，而人工看是明显重复。必须叠加「与最接近的章节页数比」。
+  const l2comic = { id: 'L2A', title: '星海邮差', chapters: [{ count: 8 }, { count: 8 }, { count: 8 }, { count: 8 }, { count: 8 }] };
+  t.eq(comicChapterPages(l2comic).length, 5, 'comicChapterPages 应返回每章页数');
+  t.deepEq(comicChapterPages({ chapters: [{ images: ['a', 'b'] }, { count: 3 }] }), [2, 3],
+    'comicChapterPages 与 comicPages 同口径：缺 count 时回落 images.length');
+  t.deepEq(comicChapterPages({}), [], '无 chapters 时返回空数组');
+  t.deepEq(comicChapterPages(null), [], 'null 安全');
+
+  const chHit = prefilterUnits([{ id: '星海邮差 汉化版/1 序', files: pages(8) }], [l2comic], {});
+  t.eq(chHit.candidates.length, 1, '单章节单元（8 页）与作品总页数（40）对不上，但命中章页数 -> 必须仍是候选');
+  const chM = chHit.candidates[0].matches[0];
+  t.eq(chM.libId, 'L2A', '命中的是同一部作品');
+  t.eq(chM.pageDiff, 0, 'pageDiff 报的是「与最像那个章节」的差，不是与总页数的差');
+  t.deepEq(chM.reasons, ['标题', '章节页数'], '只有章节页数命中时 reasons 必须如实标注，界面才不会误显示为「总页数一致」');
+
+  // 章节页数也不能无脑放行：所有章节都对不上时必须否决
+  const chMiss = prefilterUnits([{ id: '星海邮差 汉化版/1 序', files: pages(8) }],
+    [{ id: 'L2B', title: '星海邮差', chapters: [{ count: 20 }, { count: 21 }] }], {});
+  t.eq(chMiss.candidates.length, 0, '章节页数全部偏离（差 12 页 > 3 页兜底）必须否决');
+
+  // 裸形态（作品没有 chapters，只有 pagesCount/images）行为必须与以前一致
+  const bareHit = prefilterUnits([{ id: '作品甲', files: pages(10) }], [{ id: 'B1', title: '作品甲', pagesCount: 11 }], {});
+  t.eq(bareHit.candidates.length, 1, '裸形态仍按总页数判定，且 reasons 是「页数」');
+  t.deepEq(bareHit.candidates[0].matches[0].reasons, ['标题', '页数'], '裸形态 reasons 不变');
+
+  // 总页数命中时不能被章节信号改写（否则 pageDiff 语义会随数据形态漂移）
+  const totHit = prefilterUnits([{ id: '星海邮差', files: pages(40) }], [l2comic], {});
+  t.eq(totHit.candidates[0].matches[0].pageDiff, 0, '总页数 40 与作品 40 一致时 pageDiff=0');
+  t.deepEq(totHit.candidates[0].matches[0].reasons, ['标题', '页数'], '两者都满足时优先报「页数」');
 }

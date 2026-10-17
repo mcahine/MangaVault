@@ -8,26 +8,16 @@ import { keyOf, isCoverName, ensureDirs, insideRoot, ownerOf, relInRoot } from '
 import { buildLibraryIndex, discoverUnits, byteDedupeUnits, makeShaCache, recordOf, VERDICTS, abortError } from './scan.mjs';
 import { collectLibJobs, collectDupJobs, buildFingerprints, imagesIn } from './build-fp.mjs';
 import { readScan, writeScan, readHash, writeHash } from './store.mjs';
+import { summaryOf } from './summary.mjs';
 import { generateThumbs, thumbPathOf } from './thumbs.mjs';
 import { runPixelStage } from './pixel-search.mjs';
 
 
 function num(v, dflt) { const n = Number(v); return Number.isFinite(n) ? n : dflt; }
 
-/** 汇总各判定数量。 */
-export function summaryOf(units) {
-  const out = {};
-  for (const v of VERDICTS) out[v] = 0;
-  out['字节一致图片数'] = 0;
-  out['像素一致图片数'] = 0;
-  for (const u of units) {
-    if (out[u.judge] === undefined) out[u.judge] = 0;
-    out[u.judge]++;
-    out['字节一致图片数'] += u.exactCount || 0;
-    out['像素一致图片数'] += u.pixelCount || 0;
-  }
-  return out;
-}
+/* summaryOf 实现移到了 summary.mjs（pipeline 与 pipeline-fast 共用，放在这里会形成循环 import），
+   这里重导出保持调用方路径不变。 */
+export { summaryOf } from './summary.mjs';
 
 /** 库根数组 -> 给人看的标签列表。 */
 function rootLabels(libRoots) {
