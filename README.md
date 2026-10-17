@@ -4,6 +4,10 @@
 > Windows 桌面应用：**零第三方运行时依赖**（纯 Node.js ESM + 原生前端，无构建步骤、无 npm 依赖树），服务只监听 `127.0.0.1`。
 >
 > 版本：**v1.0.0** ｜ 视觉主题 **RISOPRINT · 深夜制本所**（见 [docs/UI_GUIDELINE.md](docs/UI_GUIDELINE.md)）
+>
+> [![CI](https://github.com/mcahine/MangaVault/actions/workflows/ci.yml/badge.svg)](https://github.com/mcahine/MangaVault/actions/workflows/ci.yml)
+> [![License: MIT](https://img.shields.io/badge/License-MIT-2ea44f.svg)](LICENSE)
+>
 > 文档总入口：**[docs/INDEX.md](docs/INDEX.md)**（30 秒找到任何东西）
 
 ---
@@ -366,9 +370,36 @@ node scripts/tidy.mjs               # 工程卫生检查（默认 dry-run）
 - ⚠️ **临时目录必须校验是绝对路径**：某些执行环境（如 DSH 的 `run_code`）里 `process.env` 是空对象，
   此时 `os.tmpdir()` 会返回**相对路径** `undefined\temp`，`path.join` 出来的目录会静默落进当前工作目录（本项目真的踩过一次）。
   正确写法：拿到候选路径后先 `path.isAbsolute()` 断言，不通过就依次回退（详见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 第 9 节）。
-- 贡献代码前请先读 [AGENT.md](AGENT.md)（工程铁律）与 [docs/MODULE_CONTRACT.md](docs/MODULE_CONTRACT.md)（模块契约）。
 - 当前进度与被验收项见 [docs/team/round-progress.md](docs/team/round-progress.md)（按轮次记录每个需求的根因、改动与验收证据）。
 - ⚠️ **验证 GUI（exe）时不要在前台等它**：GUI 进程会逃逸后台作业范围。用 `desktop-selftest.mjs`（fire-and-forget 点火 + 只读 trace 文件），原理见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+
+---
+
+## 参与
+
+- **提问题 / 提建议**：用 [issue 模板](https://github.com/mcahine/MangaVault/issues/new/choose)。缺陷请给复现步骤与环境，日志在数据目录下的 `mangavault.log` / `desktop.log` / `kernel-console.log`（**贴之前先搜一遍 token**）。
+- **改代码**：先读 [AGENT.md](AGENT.md)（工程铁律）与 [docs/MODULE_CONTRACT.md](docs/MODULE_CONTRACT.md)（模块契约），再跑一遍 `node tests/run-tests.mjs` 建立基线。提 PR 请附真实测试输出。
+- **不要提交**：哔咔 token、代理密码、你自己漫画库的绝对路径、任何漫画图片。
+- 提交信息用中文或英文都行，但请说明**根因**而不只是现象。
+
+---
+
+## 克隆与许可
+
+```powershell
+git clone https://github.com/mcahine/MangaVault.git
+cd MangaVault
+node tests/run-tests.mjs      # 1440 条断言，全离线，不碰真实数据
+node src/server.mjs           # 浏览器打开 http://127.0.0.1:8775
+```
+
+- 许可证：**[MIT](LICENSE)** —— 可自由使用、修改、分发，保留版权声明即可。
+- 仓库里**没有** `node_modules`、没有构建缓存；克隆下来就能跑，只有「自己构建 exe」需要系统自带 `csc.exe`。
+- 克隆后建议确认换行配置（仓库带 [.gitattributes](.gitattributes)，Windows 上 `core.autocrlf` 保持 `false` 即可，否则 `启动漫库.bat` 的 GBK 字节会被改写）。
+
+### 平台说明
+
+**桌面宿主（exe）只支持 Windows x64**，但**核心能力与测试不绑定 Windows**：后端是纯 Node.js ESM，前端是原生浏览器 ESM，`node tests/run-tests.mjs` 在 macOS / Linux 上同样能跑（跳过 exe 相关用例）。跨平台 CI 见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
 
 ---
 

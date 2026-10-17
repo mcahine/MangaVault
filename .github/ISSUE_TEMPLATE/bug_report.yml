@@ -1,0 +1,67 @@
+name: 缺陷报告
+description: 报告一个可复现的问题
+title: '[缺陷] '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请先确认：
+        1. 已读过 [README](../blob/main/README.md) 与 [docs/INDEX.md](../blob/main/docs/INDEX.md)；
+        2. 已在最新 `main` 上复现；
+        3. **不要把哔咔 token、代理密码、私有路径贴进来** —— token 只需要说「已配置/未配置」。
+
+  - type: dropdown
+    id: form
+    attributes:
+      label: 运行形态
+      options:
+        - 绿色版 exe（dist\\MangaVault.exe）
+        - 源码模式（node src/server.mjs）
+        - 仅后端 / 仅前端
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本与提交
+      description: '如 v1.0.0 / bb4d462；绿色版可看 dist\\build-info.json'
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: 环境
+      description: '操作系统 + Node 版本 + 浏览器/WebView2 版本'
+      placeholder: 'Windows 11 x64 / Node v24.18.0 / Edge 141'
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开 …
+        2. 点击 …
+        3. 出现 …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果 / 实际结果
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志与截图
+      description: '日志位置：数据目录下的 mangavault.log、desktop.log、kernel-console.log（**贴之前先搜一遍 token**）'
+      render: text
+    validations:
+      required: false

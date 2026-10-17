@@ -15,7 +15,8 @@
 
   "picacomic": {
     "apiBase": "https://picaapi.picacomic.com",
-    "apiKey": "C69BAF41DA5ABD1FFEDC6D2F1E65565756B405E69A5D1D3D1F4B2C3A4D5E6F70",
+    "//apiKey": "留空即使用 src/modules/download/api.mjs 里内建的官方值，不要手填。",
+    "apiKey": "",
     "appVersion": "2.2.1.2.3.3",
     "appPlatform": "android",
     "appBuildVersion": "44",

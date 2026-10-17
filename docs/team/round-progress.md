@@ -688,7 +688,7 @@ tidy 的规则是「删除类 API 的目标为非字面量变量，且**前 5 �
 
 | 模式 | 命中 | 结论 |
 | --- | --- | --- |
-| JWT `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9` | **0** | 无 token 泄露 |
+| JWT 头（`eyJhbGciOiJIUzI1NiIs` 开头的三段点分串） | **0** | 无 token 泄露 |
 | token 字段赋值 | **0** | — |
 | password / passwd | **0** | — |
 | `-----BEGIN` 私钥头 | **0** | — |

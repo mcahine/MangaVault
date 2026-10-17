@@ -1,0 +1,29 @@
+# 统一换行：仓库内一律 LF（Windows 上的 .bat 必须是 CRLF，见下）
+* text=auto eol=lf
+
+# 显式声明文本类型，避免 Git 把二进制当文本做换行转换
+*.mjs  text eol=lf
+*.js   text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+*.cs   text eol=lf
+*.ps1  text eol=crlf
+*.bat  text eol=crlf
+*.vbs  text eol=crlf
+
+# 二进制：绝不转换、绝不做 diff
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.dll  binary
+*.exe  binary
+*.pdb  binary
+
+# GitHub 语言统计：把前端与文档排除在「源码」之外容易失真，这里只标记生成物
+dist/** linguist-generated=true
+desktop/refs/** linguist-vendored=true

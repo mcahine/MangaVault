@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用与安装问题
+    url: https://github.com/mcahine/MangaVault/blob/main/README.md
+    about: 先看 README 的「怎么装」「常见问题」，多数问题在那里有答案
+  - name: 模块与接口文档
+    url: https://github.com/mcahine/MangaVault/blob/main/docs/INDEX.md
+    about: 按模块查接口、数据结构与已知坑

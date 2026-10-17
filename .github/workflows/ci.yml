@@ -1,0 +1,83 @@
+name: CI
+
+# 项目本身零第三方依赖，所以这里不需要 npm install / 缓存 node_modules，
+# 一条 node tests/run-tests.mjs 就是全部回归（1440 条断言，全离线、不碰真实漫画）。
+# 桌面 exe 只支持 Windows x64，因此矩阵只跑 windows-latest；
+# 后端/前端本身是平台中立的，Linux 上缺的是 csc.exe 与 WebView2，不是代码。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: 测试 (Node ${{ matrix.node }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20.x', '22.x', '24.x']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 准备 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: 确认零依赖（仓库里不该有 node_modules / lockfile）
+        shell: pwsh
+        run: |
+          if (Test-Path node_modules) { throw '仓库里出现了 node_modules' }
+          if (Test-Path package-lock.json) { throw '仓库里出现了 package-lock.json' }
+          node -e "const p=require('./package.json'); if (p.dependencies||p.devDependencies) throw new Error('不该有依赖字段')"
+
+      - name: 全量测试
+        run: node tests/run-tests.mjs
+
+      - name: 静态审计（工程卫生，仅提示）
+        continue-on-error: true
+        run: node scripts/tidy.mjs
+
+  build-desktop:
+    name: 构建桌面宿主
+    runs-on: windows-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      - name: 用系统自带 csc.exe 构建 exe
+        shell: pwsh
+        run: |
+          node scripts/build-desktop.mjs --clean --out=dist
+          Get-Content dist/build-info.json
+
+      - name: 校验产物是 x64 PE 且带三个 DLL
+        shell: pwsh
+        run: |
+          $info = Get-Content dist/build-info.json -Raw | ConvertFrom-Json
+          if ($info.peMachine -ne '0x8664') { throw "PE machine 不是 x64：$($info.peMachine)" }
+          foreach ($d in 'Microsoft.Web.WebView2.Core.dll','Microsoft.Web.WebView2.WinForms.dll','WebView2Loader.dll') {
+            if (-not (Test-Path (Join-Path dist $d))) { throw "缺少 $d" }
+          }
+
+      - name: 上传绿色包
+        uses: actions/upload-artifact@v4
+        with:
+          name: MangaVault-windows-x64
+          path: dist/
+          retention-days: 14
